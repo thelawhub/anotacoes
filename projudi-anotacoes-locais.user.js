@@ -6,8 +6,8 @@
 // @description  Adiciona Post-it local ao Projudi.
 // @author       lourencosv (GPT)
 // @license      CC BY-NC 4.0
-// @updateURL    https://gist.githubusercontent.com/lourencosv//raw/projudi-anotacoes-locais.user.js
-// @downloadURL  https://gist.githubusercontent.com/lourencosv//raw/projudi-anotacoes-locais.user.js
+// @updateURL    https://gist.githubusercontent.com/lourencosv/3fd541d959eb6e4cd0f96e30dda5c4d7/raw/projudi-anotacoes-locais.user.js
+// @downloadURL  https://gist.githubusercontent.com/lourencosv/3fd541d959eb6e4cd0f96e30dda5c4d7/raw/projudi-anotacoes-locais.user.js
 // @match        https://projudi.tjgo.jus.br/*
 // @run-at       document-end
 // @grant        GM_getValue
