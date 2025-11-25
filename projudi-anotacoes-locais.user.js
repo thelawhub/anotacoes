@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Projudi - Post-it local
 // @namespace    projudi-anotacoes-locais.user.js
-// @version      1.2
+// @version      1.3
 // @icon         https://img.icons8.com/ios-filled/100/scales--v1.png
 // @description  Adiciona Post-it local ao Projudi, com painel de notas, importação e exportação.
 // @author       lourencosv (GPT)
@@ -19,7 +19,7 @@
 (function () {
     'use strict';
 
-    // roda só dentro de iframe (como no script original)
+    // roda só dentro de iframe
     if (window.top === window.self) return;
 
     const Z_UI = 2147483000;
@@ -42,11 +42,9 @@
         const text = document.body.innerText || '';
         const match = text.match(/\b\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}\b/);
         if (!match) return null;
-
         const cnj = match[0];
         const loc = window.location;
         const subkey = (loc.pathname || '') + (loc.search || '');
-
         return {
             key: `cnj_${cnj}`,
             subkey
@@ -55,6 +53,23 @@
 
     function storageKey(ctx) {
         return `${NOTE_PREFIX}${ctx.key}::${ctx.subkey}`;
+    }
+
+    // verifica se há nota não vazia para a página atual
+    function hasNonEmptyNoteForCurrentPage() {
+        const ctx = getProcessContext();
+        if (!ctx) return false;
+
+        const key = storageKey(ctx);
+        const html = GM_getValue(key, '');
+
+        if (!html) return false;
+
+        const tmp = document.createElement('div');
+        tmp.innerHTML = html;
+        const text = (tmp.innerText || '').replace(/\s+/g, '').trim();
+
+        return !!text;
     }
 
     // ------------------ avaliação da página ------------------
@@ -76,10 +91,7 @@
         state.timer = setTimeout(evaluate, 250);
     });
 
-    obs.observe(document.documentElement, {
-        childList: true,
-        subtree: true
-    });
+    obs.observe(document.documentElement, { childList: true, subtree: true });
 
     // ------------------ fonte do ícone (Material Symbols) ------------------
 
@@ -90,57 +102,53 @@
         link.id = 'pj-material-symbols-link';
         link.rel = 'stylesheet';
         link.href = 'https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0';
-
         document.head.appendChild(link);
 
         const style = document.createElement('style');
         style.textContent = `
-        .pj-icon-btn {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 36px;
-            height: 36px;
-            border-radius: 999px;
-            border: none;
-            cursor: pointer;
-            box-shadow: 0 2px 6px rgba(0,0,0,.2);
-            background: #0056b3;
-            color: #fff;
-            padding: 0;
-        }
-        .pj-icon-chip {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 32px;
-            height: 32px;
-            border-radius: 999px;
-            border: none;
-            cursor: pointer;
-            box-shadow: 0 2px 6px rgba(0,0,0,.2);
-            background: #0056b3;
-            color: #fff;
-            padding: 0;
-        }
-        .material-symbols-outlined {
-            font-family: 'Material Symbols Outlined';
-            font-weight: normal;
-            font-style: normal;
-            font-size: 22px;
-            line-height: 1;
-            letter-spacing: normal;
-            text-transform: none;
-            display: inline-block;
-            white-space: nowrap;
-            word-wrap: normal;
-            direction: ltr;
-            -webkit-font-feature-settings: 'liga';
-            -webkit-font-smoothing: antialiased;
-        }
-        `;
-        document.head.appendChild(style);
-    }
+      .pj-icon-btn,
+      .pj-icon-chip {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 999px;
+        border: none;
+        cursor: pointer;
+        box-shadow: 0 2px 6px rgba(0,0,0,.2);
+        background: #0056b3;
+        color: #fff;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      .pj-icon-btn {
+        width: 36px;
+        height: 36px;
+      }
+
+      .pj-icon-chip {
+        width: 32px;
+        height: 32px;
+      }
+
+      .material-symbols-outlined {
+        font-family: 'Material Symbols Outlined';
+        font-weight: normal;
+        font-style: normal;
+        font-size: 22px;
+        line-height: 1;
+        letter-spacing: normal;
+        text-transform: none;
+        display: inline-block;
+        white-space: nowrap;
+        word-wrap: normal;
+        direction: ltr;
+        -webkit-font-feature-settings: 'liga';
+        -webkit-font-smoothing: antialiased;
+      }
+    `;
+      document.head.appendChild(style);
+  }
 
     // ------------------ botão principal / chip ------------------
 
@@ -152,7 +160,12 @@
         const btn = document.createElement('button');
         btn.id = 'pj-add-btn';
         btn.className = 'pj-icon-btn';
-        btn.innerHTML = '<span class="material-symbols-outlined">note_stack</span>';
+
+        const icon = document.createElement('span');
+        icon.className = 'material-symbols-outlined';
+        icon.textContent = 'note_stack';
+        btn.appendChild(icon);
+
         btn.title = 'Anotações locais desta página';
 
         Object.assign(btn.style, {
@@ -165,6 +178,11 @@
         btn.addEventListener('click', openNote);
         document.body.appendChild(btn);
         state.mounted = true;
+
+        // se já houver nota com conteúdo, abre automaticamente
+        if (hasNonEmptyNoteForCurrentPage()) {
+            openNote();
+        }
     }
 
     function mountChip() {
@@ -175,7 +193,12 @@
         const chip = document.createElement('button');
         chip.id = 'pj-chip';
         chip.className = 'pj-icon-chip';
-        chip.innerHTML = '<span class="material-symbols-outlined">note_stack</span>';
+
+        const icon = document.createElement('span');
+        icon.className = 'material-symbols-outlined';
+        icon.textContent = 'note_stack';
+        chip.appendChild(icon);
+
         chip.title = 'Mostrar anotações desta página';
 
         Object.assign(chip.style, {
@@ -389,6 +412,7 @@
 
         keys.forEach(key => {
             if (!key.startsWith(NOTE_PREFIX)) return;
+
             const rest = key.slice(NOTE_PREFIX.length); // cnj_xxx::subkey
             const parts = rest.split('::');
             if (parts.length < 2) return;
@@ -408,13 +432,7 @@
             const text = (tmp.innerText || '').replace(/\s+/g, ' ').trim();
             const preview = text.length > 180 ? text.slice(0, 180) + '…' : text;
 
-            result.push({
-                key,
-                cnj,
-                subkey,
-                html,
-                preview
-            });
+            result.push({ key, cnj, subkey, html, preview });
         });
 
         return result.sort((a, b) => a.cnj.localeCompare(b.cnj));
@@ -427,7 +445,6 @@
 
         const overlay = document.createElement('div');
         overlay.id = 'pj-notes-panel';
-
         Object.assign(overlay.style, {
             position: 'fixed',
             inset: '0',
@@ -557,7 +574,9 @@
             color: '#374151'
         });
 
-        previewBox.textContent = notes.length ? 'Selecione uma nota na lista ao lado.' : 'Nenhuma nota encontrada.';
+        previewBox.textContent = notes.length
+            ? 'Selecione uma nota na lista ao lado.'
+        : 'Nenhuma nota encontrada.';
 
         let selectedKey = null;
 
@@ -587,6 +606,7 @@
                 if (selectedKey === n.key) return;
                 item.style.background = '#f9fafb';
             });
+
             item.addEventListener('mouseleave', () => {
                 if (selectedKey === n.key) {
                     item.style.background = '#eff6ff';
@@ -602,8 +622,7 @@
                     child.style.background = '#fff';
                 });
                 item.style.background = '#eff6ff';
-
-                previewBox.innerHTML = n.html || '<i>(Nota vazia)</i>';
+                previewBox.innerHTML = n.html || '(Nota vazia)';
             });
 
             const line1 = document.createElement('div');
@@ -650,10 +669,12 @@
                 if (!confirm('Excluir esta nota?')) return;
 
                 GM_deleteValue(n.key);
+
                 if (selectedKey === n.key) {
                     selectedKey = null;
                     previewBox.textContent = 'Nota excluída. Selecione outra nota.';
                 }
+
                 item.remove();
                 refreshEmptyStateAfterDelete();
             });
@@ -686,120 +707,120 @@
 
         const info = document.createElement('div');
         info.innerHTML = `
-            <div style="font-size:11px;color:#4b5563;margin-bottom:4px;">
-                Use o botão <b>Exportar</b> para gerar um JSON com todas as notas.<br>
-                Cole um JSON válido no campo abaixo e clique em <b>Importar</b> para restaurar.
-            </div>
-        `;
+      Use o botão <strong>Exportar</strong> para gerar um JSON com todas as notas.<br>
+      Cole um JSON válido no campo abaixo e clique em <strong>Importar</strong> para restaurar.
+    `;
 
-        const textarea = document.createElement('textarea');
-        textarea.placeholder = 'JSON das notas aqui...';
-        Object.assign(textarea.style, {
-            flex: '1',
-            resize: 'vertical',
-            minHeight: '80px',
-            fontFamily: 'monospace',
-            fontSize: '11px',
-            padding: '6px',
-            borderRadius: '6px',
-            border: '1px solid #d1d5db'
-        });
+      const textarea = document.createElement('textarea');
+      textarea.placeholder = 'JSON das notas aqui...';
+      Object.assign(textarea.style, {
+          flex: '1',
+          resize: 'vertical',
+          minHeight: '80px',
+          fontFamily: 'monospace',
+          fontSize: '11px',
+          padding: '6px',
+          borderRadius: '6px',
+          border: '1px solid #d1d5db'
+      });
 
-        const btnRow = document.createElement('div');
-        Object.assign(btnRow.style, {
-            display: 'flex',
-            gap: '6px',
-            marginTop: '4px'
-        });
+      const btnRow = document.createElement('div');
+      Object.assign(btnRow.style, {
+          display: 'flex',
+          gap: '6px',
+          marginTop: '4px'
+      });
 
-        function makeSmallButton(label) {
-            const b = document.createElement('button');
-            b.textContent = label;
-            Object.assign(b.style, {
-                flex: '1',
-                borderRadius: '6px',
-                border: 'none',
-                cursor: 'pointer',
-                padding: '6px 8px',
-                fontSize: '12px',
-                fontWeight: '500',
-                background: '#111827',
-                color: '#f9fafb'
-            });
-            return b;
-        }
+      function makeSmallButton(label) {
+          const b = document.createElement('button');
+          b.textContent = label;
+          Object.assign(b.style, {
+              flex: '1',
+              borderRadius: '6px',
+              border: 'none',
+              cursor: 'pointer',
+              padding: '6px 8px',
+              fontSize: '12px',
+              fontWeight: '500',
+              background: '#111827',
+              color: '#f9fafb'
+          });
+          return b;
+      }
 
-        const exportBtn = makeSmallButton('Exportar');
-        const importBtn = makeSmallButton('Importar');
+      const exportBtn = makeSmallButton('Exportar');
+      const importBtn = makeSmallButton('Importar');
 
-        exportBtn.addEventListener('click', () => {
-            const freshNotes = getAllNotes();
-            const payload = JSON.stringify({
-                version: 1,
-                exportedAt: new Date().toISOString(),
-                notes: freshNotes.map(n => ({
-                    key: n.key,
-                    cnj: n.cnj,
-                    subkey: n.subkey,
-                    html: n.html
-                }))
-            }, null, 2);
+      exportBtn.addEventListener('click', () => {
+          const freshNotes = getAllNotes();
+          const payload = JSON.stringify({
+              version: 1,
+              exportedAt: new Date().toISOString(),
+              notes: freshNotes.map(n => ({
+                  key: n.key,
+                  cnj: n.cnj,
+                  subkey: n.subkey,
+                  html: n.html
+              }))
+          }, null, 2);
 
-            textarea.value = payload;
+          textarea.value = payload;
 
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(payload).catch(() => { /* silencioso */ });
-            }
-        });
+          if (navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(payload).catch(() => {
+                  // silencioso
+              });
+          }
+      });
 
-        importBtn.addEventListener('click', () => {
-            const txt = textarea.value.trim();
-            if (!txt) {
-                alert('Cole o JSON das notas para importar.');
-                return;
-            }
+      importBtn.addEventListener('click', () => {
+          const txt = textarea.value.trim();
+          if (!txt) {
+              alert('Cole o JSON das notas para importar.');
+              return;
+          }
 
-            let parsed;
-            try {
-                parsed = JSON.parse(txt);
-            } catch (e) {
-                alert('JSON inválido.');
-                return;
-            }
+          let parsed;
+          try {
+              parsed = JSON.parse(txt);
+          } catch (e) {
+              alert('JSON inválido.');
+              return;
+          }
 
-            const arr = Array.isArray(parsed) ? parsed : parsed.notes;
-            if (!Array.isArray(arr)) {
-                alert('Formato inválido. Esperado campo "notes" como array.');
-                return;
-            }
+          const arr = Array.isArray(parsed) ? parsed : parsed.notes;
+          if (!Array.isArray(arr)) {
+              alert('Formato inválido. Esperado campo "notes" como array.');
+              return;
+          }
 
-            let count = 0;
-            arr.forEach(n => {
-                if (n && typeof n.key === 'string' && typeof n.html === 'string') {
-                    GM_setValue(n.key, n.html);
-                    count++;
-                }
-            });
+          let count = 0;
+          arr.forEach(n => {
+              if (n && typeof n.key === 'string' && typeof n.html === 'string') {
+                  GM_setValue(n.key, n.html);
+                  count++;
+              }
+          });
 
-            alert(`${count} nota(s) importada(s). A lista será recarregada.`);
-            overlay.remove();
-            openNotesPanel(); // reabre já com as novas notas
-        });
+          alert(`${count} nota(s) importada(s). A lista será recarregada.`);
+          overlay.remove();
+          openNotesPanel(); // reabre já com as novas notas
+      });
 
-        btnRow.append(exportBtn, importBtn);
-        rightBody.append(info, textarea, btnRow);
-        right.append(rightHeader, rightBody);
+      btnRow.append(exportBtn, importBtn);
+      rightBody.append(info, textarea, btnRow);
+      right.append(rightHeader, rightBody);
 
-        body.append(left, right);
-        panel.append(header, body);
-        overlay.appendChild(panel);
-        document.body.appendChild(overlay);
+      body.append(left, right);
+      panel.append(header, body);
+      overlay.appendChild(panel);
+      document.body.appendChild(overlay);
 
-        closeBtn.addEventListener('click', () => overlay.remove());
-        overlay.addEventListener('click', (e) => {
-            if (e.target === overlay) overlay.remove();
-        });
-    }
+      closeBtn.addEventListener('click', () => overlay.remove());
+      overlay.addEventListener('click', (e) => {
+          if (e.target === overlay) overlay.remove();
+      });
+  }
 
     function toggleNotesPanel() {
         const existing = document.getElementById('pj-notes-panel');
@@ -874,19 +895,15 @@
         // evita conflito quando estiver digitando em inputs/textareas
         const t = e.target;
         const tag = (t && t.tagName) ? t.tagName.toUpperCase() : '';
-        const isEditable = t && (t.isContentEditable ||
-            tag === 'INPUT' ||
-            tag === 'TEXTAREA' ||
-            tag === 'SELECT');
-
+        const isEditable =
+              t && (t.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT');
         if (isEditable) return;
 
         // Windows/Linux: Ctrl + Alt + N
-        // macOS: Ctrl + Option + N  (Option aciona altKey)
+        // macOS: Ctrl + Option + N (Option aciona altKey)
         if (e.ctrlKey && e.altKey && !e.shiftKey && String(e.key).toLowerCase() === 'n') {
             e.preventDefault();
             toggleNotesPanel();
         }
     });
-
 })();
