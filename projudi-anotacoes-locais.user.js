@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Projudi - Post-it local
 // @namespace    projudi-anotacoes-locais.user.js
-// @version      1.3
+// @version      1.5
 // @icon         https://img.icons8.com/ios-filled/100/scales--v1.png
 // @description  Adiciona Post-it local ao Projudi, com painel de notas, importação e exportação.
 // @author       lourencosv (GPT)
@@ -42,9 +42,11 @@
         const text = document.body.innerText || '';
         const match = text.match(/\b\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}\b/);
         if (!match) return null;
+
         const cnj = match[0];
         const loc = window.location;
         const subkey = (loc.pathname || '') + (loc.search || '');
+
         return {
             key: `cnj_${cnj}`,
             subkey
@@ -62,13 +64,11 @@
 
         const key = storageKey(ctx);
         const html = GM_getValue(key, '');
-
         if (!html) return false;
 
         const tmp = document.createElement('div');
         tmp.innerHTML = html;
         const text = (tmp.innerText || '').replace(/\s+/g, '').trim();
-
         return !!text;
     }
 
@@ -76,9 +76,11 @@
 
     function evaluate() {
         const ok = isProcessPage(document);
+
         if (ok && !state.mounted) {
             mountButton();
         }
+
         if (!ok && state.mounted) {
             unmountAll();
         }
@@ -106,49 +108,67 @@
 
         const style = document.createElement('style');
         style.textContent = `
-      .pj-icon-btn,
-      .pj-icon-chip {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        border-radius: 999px;
-        border: none;
-        cursor: pointer;
-        box-shadow: 0 2px 6px rgba(0,0,0,.2);
-        background: #0056b3;
-        color: #fff;
-        padding: 0;
-        box-sizing: border-box;
-      }
+        .pj-icon-btn,
+        .pj-icon-chip {
+         display: inline-flex;
+         align-items: center;
+         justify-content: center;
+         border-radius: 999px;
+         border: none;
+         cursor: pointer;
+         box-shadow: 0 2px 6px rgba(0,0,0,.2);
+         background: #0056b3;
+         color: #fff;
+         padding: 0;
+         box-sizing: border-box;
+         width: 36px;
+         height: 36px;
+        }
+        .material-symbols-outlined {
+         font-family: 'Material Symbols Outlined';
+         font-weight: normal;
+         font-style: normal;
+         font-size: 22px;
+         line-height: 1;
+         letter-spacing: normal;
+         text-transform: none;
+         display: inline-block;
+         white-space: nowrap;
+         word-wrap: normal;
+         direction: ltr;
+         -webkit-font-feature-settings: 'liga';
+         -webkit-font-smoothing: antialiased;
+        }
+      `;
+        document.head.appendChild(style);
+    }
 
-      .pj-icon-btn {
-        width: 36px;
-        height: 36px;
-      }
+    // ------------------ toggle da nota a partir do botão flutuante ------------------
 
-      .pj-icon-chip {
-        width: 32px;
-        height: 32px;
-      }
+    function toggleNoteFromButton() {
+        const note = document.getElementById('pj-note');
+        const chip = document.getElementById('pj-chip');
 
-      .material-symbols-outlined {
-        font-family: 'Material Symbols Outlined';
-        font-weight: normal;
-        font-style: normal;
-        font-size: 22px;
-        line-height: 1;
-        letter-spacing: normal;
-        text-transform: none;
-        display: inline-block;
-        white-space: nowrap;
-        word-wrap: normal;
-        direction: ltr;
-        -webkit-font-feature-settings: 'liga';
-        -webkit-font-smoothing: antialiased;
-      }
-    `;
-      document.head.appendChild(style);
-  }
+        // 1) Se a nota está aberta, o botão passa a "minimizar"
+        if (note) {
+            note.remove();
+            if (!chip) {
+                mountChip();
+            }
+            return;
+        }
+
+        // 2) Se está minimizada (chip visível), o botão restauraria,
+        // mas como o botão fica oculto enquanto há chip, isso é mais uma proteção.
+        if (chip) {
+            chip.remove();
+            openNote();
+            return;
+        }
+
+        // 3) Não há nota ainda (nem aberta, nem minimizada) → abre normalmente
+        openNote();
+    }
 
     // ------------------ botão principal / chip ------------------
 
@@ -172,10 +192,13 @@
             position: 'fixed',
             top: '8px',
             left: '8px',
-            zIndex: Z_UI
+            zIndex: Z_UI,
+            outline: 'none'
         });
 
-        btn.addEventListener('click', openNote);
+        btn.addEventListener('mousedown', e => e.preventDefault());
+        btn.addEventListener('click', toggleNoteFromButton);
+
         document.body.appendChild(btn);
         state.mounted = true;
 
@@ -204,7 +227,7 @@
         Object.assign(chip.style, {
             position: 'fixed',
             top: '8px',
-            left: '8px',
+            left: '8px', // mesmo lugar do botão principal
             zIndex: Z_UI
         });
 
@@ -214,6 +237,10 @@
         });
 
         document.body.appendChild(chip);
+
+        // quando o chip existe, escondemos o botão principal
+        const btn = document.getElementById('pj-add-btn');
+        if (btn) btn.style.display = 'none';
     }
 
     function unmountAll() {
@@ -255,6 +282,14 @@
             flexDirection: 'column',
             overflow: 'hidden'
         });
+
+        // quando abre a nota:
+        // - garante que o chip suma
+        // - garante que o botão principal volte a aparecer
+        const chip = document.getElementById('pj-chip');
+        if (chip) chip.remove();
+        const btn = document.getElementById('pj-add-btn');
+        if (btn) btn.style.display = '';
 
         // cabeçalho
         const header = document.createElement('div');
@@ -355,6 +390,7 @@
         const editor = document.createElement('div');
         editor.contentEditable = 'true';
         editor.innerHTML = saved || '';
+
         Object.assign(editor.style, {
             flex: '1',
             padding: '8px',
@@ -532,7 +568,6 @@
         });
 
         // --- lado esquerdo: lista de notas + preview ---
-
         const leftHeader = document.createElement('div');
         leftHeader.textContent = 'Notas salvas';
         Object.assign(leftHeader.style, {
@@ -574,9 +609,7 @@
             color: '#374151'
         });
 
-        previewBox.textContent = notes.length
-            ? 'Selecione uma nota na lista ao lado.'
-        : 'Nenhuma nota encontrada.';
+        previewBox.textContent = notes.length ? 'Selecione uma nota na lista ao lado.' : 'Nenhuma nota encontrada.';
 
         let selectedKey = null;
 
@@ -672,7 +705,7 @@
 
                 if (selectedKey === n.key) {
                     selectedKey = null;
-                    previewBox.textContent = 'Nota excluída. Selecione outra nota.';
+                    previewBox.textContent = 'Nota excluída.\nSelecione outra nota.';
                 }
 
                 item.remove();
@@ -686,7 +719,6 @@
         left.append(leftHeader, listContainer, previewTitle, previewBox);
 
         // --- lado direito: import/export ---
-
         const rightHeader = document.createElement('div');
         rightHeader.textContent = 'Importar / Exportar';
         Object.assign(rightHeader.style, {
@@ -707,120 +739,120 @@
 
         const info = document.createElement('div');
         info.innerHTML = `
-      Use o botão <strong>Exportar</strong> para gerar um JSON com todas as notas.<br>
-      Cole um JSON válido no campo abaixo e clique em <strong>Importar</strong> para restaurar.
+      Use o botão Exportar para gerar um JSON com todas as notas.<br>
+      Cole um JSON válido no campo abaixo e clique em Importar para restaurar.
     `;
 
-      const textarea = document.createElement('textarea');
-      textarea.placeholder = 'JSON das notas aqui...';
-      Object.assign(textarea.style, {
-          flex: '1',
-          resize: 'vertical',
-          minHeight: '80px',
-          fontFamily: 'monospace',
-          fontSize: '11px',
-          padding: '6px',
-          borderRadius: '6px',
-          border: '1px solid #d1d5db'
-      });
+        const textarea = document.createElement('textarea');
+        textarea.placeholder = 'JSON das notas aqui...';
+        Object.assign(textarea.style, {
+            flex: '1',
+            resize: 'vertical',
+            minHeight: '80px',
+            fontFamily: 'monospace',
+            fontSize: '11px',
+            padding: '6px',
+            borderRadius: '6px',
+            border: '1px solid #d1d5db'
+        });
 
-      const btnRow = document.createElement('div');
-      Object.assign(btnRow.style, {
-          display: 'flex',
-          gap: '6px',
-          marginTop: '4px'
-      });
+        const btnRow = document.createElement('div');
+        Object.assign(btnRow.style, {
+            display: 'flex',
+            gap: '6px',
+            marginTop: '4px'
+        });
 
-      function makeSmallButton(label) {
-          const b = document.createElement('button');
-          b.textContent = label;
-          Object.assign(b.style, {
-              flex: '1',
-              borderRadius: '6px',
-              border: 'none',
-              cursor: 'pointer',
-              padding: '6px 8px',
-              fontSize: '12px',
-              fontWeight: '500',
-              background: '#111827',
-              color: '#f9fafb'
-          });
-          return b;
-      }
+        function makeSmallButton(label) {
+            const b = document.createElement('button');
+            b.textContent = label;
+            Object.assign(b.style, {
+                flex: '1',
+                borderRadius: '6px',
+                border: 'none',
+                cursor: 'pointer',
+                padding: '6px 8px',
+                fontSize: '12px',
+                fontWeight: '500',
+                background: '#111827',
+                color: '#f9fafb'
+            });
+            return b;
+        }
 
-      const exportBtn = makeSmallButton('Exportar');
-      const importBtn = makeSmallButton('Importar');
+        const exportBtn = makeSmallButton('Exportar');
+        const importBtn = makeSmallButton('Importar');
 
-      exportBtn.addEventListener('click', () => {
-          const freshNotes = getAllNotes();
-          const payload = JSON.stringify({
-              version: 1,
-              exportedAt: new Date().toISOString(),
-              notes: freshNotes.map(n => ({
-                  key: n.key,
-                  cnj: n.cnj,
-                  subkey: n.subkey,
-                  html: n.html
-              }))
-          }, null, 2);
+        exportBtn.addEventListener('click', () => {
+            const freshNotes = getAllNotes();
+            const payload = JSON.stringify({
+                version: 1,
+                exportedAt: new Date().toISOString(),
+                notes: freshNotes.map(n => ({
+                    key: n.key,
+                    cnj: n.cnj,
+                    subkey: n.subkey,
+                    html: n.html
+                }))
+            }, null, 2);
 
-          textarea.value = payload;
+            textarea.value = payload;
 
-          if (navigator.clipboard && navigator.clipboard.writeText) {
-              navigator.clipboard.writeText(payload).catch(() => {
-                  // silencioso
-              });
-          }
-      });
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(payload).catch(() => {
+                    // silencioso
+                });
+            }
+        });
 
-      importBtn.addEventListener('click', () => {
-          const txt = textarea.value.trim();
-          if (!txt) {
-              alert('Cole o JSON das notas para importar.');
-              return;
-          }
+        importBtn.addEventListener('click', () => {
+            const txt = textarea.value.trim();
+            if (!txt) {
+                alert('Cole o JSON das notas para importar.');
+                return;
+            }
 
-          let parsed;
-          try {
-              parsed = JSON.parse(txt);
-          } catch (e) {
-              alert('JSON inválido.');
-              return;
-          }
+            let parsed;
+            try {
+                parsed = JSON.parse(txt);
+            } catch (e) {
+                alert('JSON inválido.');
+                return;
+            }
 
-          const arr = Array.isArray(parsed) ? parsed : parsed.notes;
-          if (!Array.isArray(arr)) {
-              alert('Formato inválido. Esperado campo "notes" como array.');
-              return;
-          }
+            const arr = Array.isArray(parsed) ? parsed : parsed.notes;
+            if (!Array.isArray(arr)) {
+                alert('Formato inválido.\nEsperado campo "notes" como array.');
+                return;
+            }
 
-          let count = 0;
-          arr.forEach(n => {
-              if (n && typeof n.key === 'string' && typeof n.html === 'string') {
-                  GM_setValue(n.key, n.html);
-                  count++;
-              }
-          });
+            let count = 0;
+            arr.forEach(n => {
+                if (n && typeof n.key === 'string' && typeof n.html === 'string') {
+                    GM_setValue(n.key, n.html);
+                    count++;
+                }
+            });
 
-          alert(`${count} nota(s) importada(s). A lista será recarregada.`);
-          overlay.remove();
-          openNotesPanel(); // reabre já com as novas notas
-      });
+            alert(`${count} nota(s) importada(s).\nA lista será recarregada.`);
+            overlay.remove();
+            openNotesPanel(); // reabre já com as novas notas
+        });
 
-      btnRow.append(exportBtn, importBtn);
-      rightBody.append(info, textarea, btnRow);
-      right.append(rightHeader, rightBody);
+        btnRow.append(exportBtn, importBtn);
+        rightBody.append(info, textarea, btnRow);
+        right.append(rightHeader, rightBody);
 
-      body.append(left, right);
-      panel.append(header, body);
-      overlay.appendChild(panel);
-      document.body.appendChild(overlay);
+        body.append(left, right);
+        panel.append(header, body);
+        overlay.appendChild(panel);
+        document.body.appendChild(overlay);
 
-      closeBtn.addEventListener('click', () => overlay.remove());
-      overlay.addEventListener('click', (e) => {
-          if (e.target === overlay) overlay.remove();
-      });
-  }
+        closeBtn.addEventListener('click', () => overlay.remove());
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) overlay.remove();
+        });
+    }
 
     function toggleNotesPanel() {
         const existing = document.getElementById('pj-notes-panel');
@@ -852,9 +884,11 @@
             dragging = true;
             sx = e.clientX;
             sy = e.clientY;
+
             const r = el.getBoundingClientRect();
             sl = r.left;
             st = r.top;
+
             document.addEventListener('mousemove', move);
             document.addEventListener('mouseup', up);
             e.preventDefault();
@@ -880,9 +914,11 @@
             resizing = true;
             sx = e.clientX;
             sy = e.clientY;
+
             const r = el.getBoundingClientRect();
             sw = r.width;
             sh = r.height;
+
             document.addEventListener('mousemove', move);
             document.addEventListener('mouseup', up);
             e.preventDefault();
@@ -895,8 +931,7 @@
         // evita conflito quando estiver digitando em inputs/textareas
         const t = e.target;
         const tag = (t && t.tagName) ? t.tagName.toUpperCase() : '';
-        const isEditable =
-              t && (t.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT');
+        const isEditable = t && (t.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT');
         if (isEditable) return;
 
         // Windows/Linux: Ctrl + Alt + N
@@ -906,4 +941,5 @@
             toggleNotesPanel();
         }
     });
+
 })();
