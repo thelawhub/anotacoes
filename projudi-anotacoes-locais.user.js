@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         Projudi - Post-it local
+// @name         Post-it local
 // @namespace    projudi-anotacoes-locais.user.js
 // @version      1.6
 // @icon         https://img.icons8.com/ios-filled/100/scales--v1.png
