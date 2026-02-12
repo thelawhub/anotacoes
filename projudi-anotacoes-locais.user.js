@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         Post-it local
 // @namespace    projudi-anotacoes-locais.user.js
-// @version      1.7
+// @version      1.8
 // @icon         https://img.icons8.com/ios-filled/100/scales--v1.png
 // @description  Adiciona Post-it local ao Projudi, com painel de notas, importação e exportação.
 // @author       lourencosv (GPT)
 // @license      CC BY-NC 4.0
 // @updateURL    https://gist.githubusercontent.com/lourencosv/3fd541d959eb6e4cd0f96e30dda5c4d7/raw/projudi-anotacoes-locais.user.js
 // @downloadURL  https://gist.githubusercontent.com/lourencosv/3fd541d959eb6e4cd0f96e30dda5c4d7/raw/projudi-anotacoes-locais.user.js
-// @match        https://projudi.tjgo.jus.br/*
+// @match        *://projudi.tjgo.jus.br/*
 // @run-at       document-end
 // @grant        GM_getValue
 // @grant        GM_setValue
