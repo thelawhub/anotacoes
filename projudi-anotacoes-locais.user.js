@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Post-it local
 // @namespace    projudi-anotacoes-locais.user.js
-// @version      1.6
+// @version      1.7
 // @icon         https://img.icons8.com/ios-filled/100/scales--v1.png
 // @description  Adiciona Post-it local ao Projudi, com painel de notas, importação e exportação.
 // @author       lourencosv (GPT)
@@ -14,12 +14,13 @@
 // @grant        GM_setValue
 // @grant        GM_listValues
 // @grant        GM_deleteValue
+// @grant        GM_registerMenuCommand
 // ==/UserScript==
 
 (function () {
     'use strict';
 
-    // roda só dentro de iframe
+    // roda so dentro de iframe
     if (window.top === window.self) return;
 
     const Z_UI = 2147483000;
@@ -27,10 +28,11 @@
 
     const state = {
         mounted: false,
-        timer: null
+        timer: null,
+        menuRegistered: false
     };
 
-    // ------------------ detecção: página de processo (CNJ completo) ------------------
+    // ------------------ deteccao: pagina de processo (CNJ completo) ------------------
 
     function isProcessPage(doc) {
         if (!doc || !doc.body) return false;
@@ -57,13 +59,13 @@
         return `${NOTE_PREFIX}${ctx.key}::${ctx.subkey}`;
     }
 
-    // ------------------ resolução de nota p/ página (com fallback por CNJ) ------------------
+    // ------------------ resolucao de nota p/ pagina (com fallback por CNJ) ------------------
 
     function resolveNoteForCurrentPage() {
         const ctx = getProcessContext();
         if (!ctx) return null;
 
-        // chave “exata” (CNJ + subkey / URL)
+        // chave "exata" (CNJ + subkey / URL)
         let key = storageKey(ctx);
         let html = GM_getValue(key, null);
 
@@ -88,7 +90,7 @@
         };
     }
 
-    // verifica se há nota não vazia para a página atual (usando fallback)
+    // verifica se ha nota nao vazia para a pagina atual (usando fallback)
     function hasNonEmptyNoteForCurrentPage() {
         const resolved = resolveNoteForCurrentPage();
         if (!resolved) return false;
@@ -103,13 +105,17 @@
         return !!text;
     }
 
-    // ------------------ avaliação da página ------------------
+    // ------------------ avaliacao da pagina ------------------
 
     function evaluate() {
         const ok = isProcessPage(document);
 
         if (ok && !state.mounted) {
             mountButton();
+        }
+
+        if (ok && state.mounted) {
+            updateNoteIndicator();
         }
 
         if (!ok && state.mounted) {
@@ -129,7 +135,7 @@
         subtree: true
     });
 
-    // ------------------ fonte do ícone (Material Symbols) ------------------
+    // ------------------ fonte do icone (Material Symbols) ------------------
 
     function ensureMaterialIconsLoaded() {
         if (document.getElementById('pj-material-symbols-link')) return;
@@ -142,8 +148,7 @@
 
         const style = document.createElement('style');
         style.textContent = `
-            .pj-icon-btn,
-            .pj-icon-chip {
+            .pj-icon-btn {
                 display: inline-flex;
                 align-items: center;
                 justify-content: center;
@@ -157,6 +162,22 @@
                 box-sizing: border-box;
                 width: 36px;
                 height: 36px;
+                position: relative;
+            }
+            .pj-note-badge {
+                position: absolute;
+                top: -4px;
+                right: -4px;
+                min-width: 16px;
+                height: 16px;
+                border-radius: 999px;
+                background: #dc2626;
+                color: #fff;
+                font: 700 11px/16px system-ui, sans-serif;
+                text-align: center;
+                border: 1px solid #fff;
+                box-shadow: 0 1px 3px rgba(0,0,0,.3);
+                pointer-events: none;
             }
             .material-symbols-outlined {
                 font-family: 'Material Symbols Outlined';
@@ -177,38 +198,38 @@
         document.head.appendChild(style);
     }
 
-    // ------------------ toggle da nota a partir do botão flutuante ------------------
+    // ------------------ menu da extensao ------------------
+
+    function ensureMenuRegistered() {
+        if (state.menuRegistered) return;
+        if (typeof GM_registerMenuCommand !== 'function') return;
+
+        GM_registerMenuCommand('Abrir Painel', () => {
+            openNotesPanel();
+        });
+        state.menuRegistered = true;
+    }
+
+    // ------------------ toggle da nota a partir do botao flutuante ------------------
 
     function toggleNoteFromButton() {
         const note = document.getElementById('pj-note');
-        const chip = document.getElementById('pj-chip');
 
-        // 1) Se a nota está aberta, o botão passa a "minimizar"
         if (note) {
             note.remove();
-            if (!chip) {
-                mountChip();
-            }
             return;
         }
 
-        // 2) Se está minimizada (chip visível), restauraria
-        if (chip) {
-            chip.remove();
-            openNote();
-            return;
-        }
-
-        // 3) Não há nota ainda → abre normalmente
         openNote();
     }
 
-    // ------------------ botão principal / chip ------------------
+    // ------------------ botao principal ------------------
 
     function mountButton() {
         if (document.getElementById('pj-add-btn')) return;
 
         ensureMaterialIconsLoaded();
+        ensureMenuRegistered();
 
         const btn = document.createElement('button');
         btn.id = 'pj-add-btn';
@@ -219,7 +240,7 @@
         icon.textContent = 'note_stack';
 
         btn.appendChild(icon);
-        btn.title = 'Anotações locais desta página';
+        btn.title = 'Anotacoes locais desta pagina';
 
         Object.assign(btn.style, {
             position: 'fixed',
@@ -234,57 +255,39 @@
 
         document.body.appendChild(btn);
         state.mounted = true;
+        updateNoteIndicator();
+    }
 
-        // se já houver nota com conteúdo, abre automaticamente
-        if (hasNonEmptyNoteForCurrentPage()) {
-            openNote();
+    function updateNoteIndicator() {
+        const btn = document.getElementById('pj-add-btn');
+        if (!btn) return;
+
+        const existing = document.getElementById('pj-note-badge');
+        const hasNote = hasNonEmptyNoteForCurrentPage();
+
+        if (hasNote && !existing) {
+            const badge = document.createElement('span');
+            badge.id = 'pj-note-badge';
+            badge.className = 'pj-note-badge';
+            badge.textContent = '!';
+            badge.title = 'Ha nota neste processo';
+            btn.appendChild(badge);
+        }
+
+        if (!hasNote && existing) {
+            existing.remove();
         }
     }
 
-    function mountChip() {
-        if (document.getElementById('pj-chip')) return;
-
-        ensureMaterialIconsLoaded();
-
-        const chip = document.createElement('button');
-        chip.id = 'pj-chip';
-        chip.className = 'pj-icon-chip';
-
-        const icon = document.createElement('span');
-        icon.className = 'material-symbols-outlined';
-        icon.textContent = 'note_stack';
-
-        chip.appendChild(icon);
-        chip.title = 'Mostrar anotações desta página';
-
-        Object.assign(chip.style, {
-            position: 'fixed',
-            top: '8px',
-            left: '8px', // mesmo lugar do botão principal
-            zIndex: Z_UI
-        });
-
-        chip.addEventListener('click', () => {
-            chip.remove();
-            openNote();
-        });
-
-        document.body.appendChild(chip);
-
-        // quando o chip existe, escondemos o botão principal
-        const btn = document.getElementById('pj-add-btn');
-        if (btn) btn.style.display = 'none';
-    }
-
     function unmountAll() {
-        ['pj-add-btn', 'pj-note', 'pj-chip', 'pj-notes-panel'].forEach(id => {
+        ['pj-add-btn', 'pj-note', 'pj-notes-panel'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.remove();
         });
         state.mounted = false;
     }
 
-    // ------------------ janela de nota da página ------------------
+    // ------------------ janela de nota da pagina ------------------
 
     function openNote() {
         if (document.getElementById('pj-note')) return;
@@ -316,15 +319,7 @@
             overflow: 'hidden'
         });
 
-        // quando abre a nota:
-        // - garante que o chip suma
-        // - garante que o botão principal volte a aparecer
-        const chip = document.getElementById('pj-chip');
-        if (chip) chip.remove();
-        const btn = document.getElementById('pj-add-btn');
-        if (btn) btn.style.display = '';
-
-        // cabeçalho
+        // cabecalho
         const header = document.createElement('div');
         Object.assign(header.style, {
             background: '#ffeb8a',
@@ -341,7 +336,7 @@
         });
 
         const headerTitle = document.createElement('div');
-        headerTitle.textContent = 'Anotações (página atual)';
+        headerTitle.textContent = 'Anotacoes (pagina atual)';
 
         const actions = document.createElement('div');
         Object.assign(actions.style, {
@@ -353,18 +348,6 @@
             cursor: 'pointer'
         });
 
-        const panelBtn = document.createElement('span');
-        panelBtn.textContent = 'Painel';
-        Object.assign(panelBtn.style, {
-            fontSize: '12px',
-            padding: '2px 6px',
-            borderRadius: '6px',
-            border: '1px solid rgba(0,0,0,.1)',
-            background: '#fef9c3',
-            cursor: 'pointer',
-            userSelect: 'none'
-        });
-
         const minSpan = document.createElement('span');
         minSpan.textContent = '-';
         minSpan.style.color = '#3a2f00';
@@ -373,7 +356,7 @@
         closeSpan.textContent = 'x';
         closeSpan.style.color = '#b91c1c';
 
-        actions.append(panelBtn, minSpan, closeSpan);
+        actions.append(minSpan, closeSpan);
         header.append(headerTitle, actions);
 
         // toolbar
@@ -391,31 +374,41 @@
         });
 
         const cmds = [
-            { t: 'B', c: 'bold' },
-            { t: 'I', c: 'italic' },
-            { t: 'U', c: 'underline' },
-            { t: 'T', c: 'strikeThrough' },
-            { t: '<', c: 'justifyLeft' },
-            { t: '=', c: 'justifyCenter' },
-            { t: '>', c: 'justifyRight' },
-            { t: '≡', c: 'justifyFull' }
+            { icon: 'format_bold', cmd: 'bold', title: 'Negrito' },
+            { icon: 'format_italic', cmd: 'italic', title: 'Italico' },
+            { icon: 'format_underlined', cmd: 'underline', title: 'Sublinhado' },
+            { icon: 'strikethrough_s', cmd: 'strikeThrough', title: 'Riscado' },
+            { icon: 'format_align_left', cmd: 'justifyLeft', title: 'Alinhar a esquerda' },
+            { icon: 'format_align_center', cmd: 'justifyCenter', title: 'Centralizar' },
+            { icon: 'format_align_right', cmd: 'justifyRight', title: 'Alinhar a direita' },
+            { icon: 'format_align_justify', cmd: 'justifyFull', title: 'Justificar' }
         ];
 
-        cmds.forEach(({ t, c }) => {
+        cmds.forEach(({ icon, cmd, title }) => {
             const b = document.createElement('button');
-            b.textContent = t;
             Object.assign(b.style, {
-                width: '26px',
-                height: '26px',
+                width: '30px',
+                height: '30px',
                 background: '#fff',
                 border: '1px solid #cbd5e1',
                 borderRadius: '6px',
                 cursor: 'pointer',
-                fontWeight: '700',
                 color: '#222',
-                boxShadow: '0 1px 2px rgba(0,0,0,.06)'
+                boxShadow: '0 1px 2px rgba(0,0,0,.06)',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '0'
             });
-            b.addEventListener('click', () => document.execCommand(c, false, null));
+            b.title = title;
+
+            const i = document.createElement('span');
+            i.className = 'material-symbols-outlined';
+            i.style.fontSize = '20px';
+            i.textContent = icon;
+            b.appendChild(i);
+
+            b.addEventListener('click', () => document.execCommand(cmd, false, null));
             toolbar.appendChild(b);
         });
 
@@ -435,6 +428,7 @@
 
         editor.addEventListener('input', () => {
             GM_setValue(key, editor.innerHTML);
+            updateNoteIndicator();
         });
 
         // grip de resize
@@ -455,19 +449,14 @@
 
         minSpan.addEventListener('click', () => {
             note.remove();
-            mountChip();
         });
 
         closeSpan.addEventListener('click', () => {
             if (confirm('Excluir esta nota?')) {
                 GM_deleteValue(key);
                 note.remove();
+                updateNoteIndicator();
             }
-        });
-
-        panelBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            openNotesPanel();
         });
 
         note.append(header, toolbar, editor, grip);
@@ -493,7 +482,7 @@
 
             const html = GM_getValue(key, '');
 
-            // pula notas totalmente vazias (HTML vazio ou só tags em branco)
+            // pula notas totalmente vazias (HTML vazio ou so tags em branco)
             if (!html || !html.replace(/<[^>]*>/g, '').replace(/\s+/g, '').trim()) {
                 return;
             }
@@ -501,7 +490,7 @@
             const tmp = document.createElement('div');
             tmp.innerHTML = html;
             const text = (tmp.innerText || '').replace(/\s+/g, ' ').trim();
-            const preview = text.length > 180 ? text.slice(0, 180) + '…' : text;
+            const preview = text.length > 180 ? text.slice(0, 180) + '...' : text;
 
             result.push({ key, cnj, subkey, html, preview });
         });
@@ -556,7 +545,7 @@
         title.textContent = 'Notas locais do Projudi';
 
         const subtitle = document.createElement('div');
-        subtitle.textContent = 'Atalho: Ctrl + Alt + N (Windows / Linux) · Ctrl + Option + N (macOS)';
+        subtitle.textContent = 'Acesso pelo menu da extensao (Tampermonkey).';
         Object.assign(subtitle.style, {
             fontSize: '11px',
             color: '#9ca3af',
@@ -624,7 +613,7 @@
         });
 
         const previewTitle = document.createElement('div');
-        previewTitle.textContent = 'Pré-visualização da nota selecionada';
+        previewTitle.textContent = 'Pre-visualizacao da nota selecionada';
         Object.assign(previewTitle.style, {
             padding: '6px 8px 0',
             fontSize: '11px',
@@ -647,7 +636,7 @@
 
         previewBox.textContent = notes.length
             ? 'Selecione uma nota na lista ao lado.'
-        : 'Nenhuma nota encontrada.';
+            : 'Nenhuma nota encontrada.';
 
         let selectedKey = null;
 
@@ -714,14 +703,14 @@
             });
 
             const line3 = document.createElement('div');
-            line3.textContent = n.preview || '(sem conteúdo)';
+            line3.textContent = n.preview || '(sem conteudo)';
             Object.assign(line3.style, {
                 fontSize: '11px',
                 color: '#4b5563',
                 marginTop: '4px'
             });
 
-            // botão de excluir dentro do item
+            // botao de excluir dentro do item
             const deleteBtn = document.createElement('button');
             deleteBtn.textContent = 'Excluir';
             Object.assign(deleteBtn.style, {
@@ -745,11 +734,12 @@
 
                 if (selectedKey === n.key) {
                     selectedKey = null;
-                    previewBox.textContent = 'Nota excluída.\nSelecione outra nota.';
+                    previewBox.textContent = 'Nota excluida.\nSelecione outra nota.';
                 }
 
                 item.remove();
                 refreshEmptyStateAfterDelete();
+                updateNoteIndicator();
             });
 
             item.append(line1, line2, line3, deleteBtn);
@@ -780,8 +770,8 @@
 
         const info = document.createElement('div');
         info.innerHTML = `
-            Use o botão <strong>Exportar</strong> para gerar um JSON com todas as notas.<br>
-            Cole um JSON válido no campo abaixo e clique em <strong>Importar</strong> para restaurar.
+            Use o botao <strong>Exportar</strong> para gerar um JSON com todas as notas.<br>
+            Cole um JSON valido no campo abaixo e clique em <strong>Importar</strong> para restaurar.
         `;
         Object.assign(info.style, {
             fontSize: '11px',
@@ -816,7 +806,7 @@
             padding: '6px 8px',
             borderRadius: '6px',
             border: 'none',
-            background: '#2563eb', // azul mais vivo
+            background: '#2563eb',
             color: '#ffffff',
             cursor: 'pointer',
             fontSize: '12px',
@@ -831,7 +821,7 @@
             padding: '6px 8px',
             borderRadius: '6px',
             border: 'none',
-            background: '#16a34a', // verde mais vivo
+            background: '#16a34a',
             color: '#ffffff',
             cursor: 'pointer',
             fontSize: '12px',
@@ -862,12 +852,12 @@
             try {
                 parsed = JSON.parse(raw);
             } catch (e) {
-                alert('JSON inválido.');
+                alert('JSON invalido.');
                 return;
             }
 
             if (!Array.isArray(parsed)) {
-                alert('Formato inválido: esperado um array de notas.');
+                alert('Formato invalido: esperado um array de notas.');
                 return;
             }
 
@@ -881,7 +871,8 @@
                 count++;
             });
 
-            alert(`Importação concluída. ${count} nota(s) importada(s). Reabra o painel para ver a lista atualizada.`);
+            updateNoteIndicator();
+            alert(`Importacao concluida. ${count} nota(s) importada(s). Reabra o painel para ver a lista atualizada.`);
         });
 
         buttonsRow.append(btnExport, btnImport);
@@ -904,7 +895,7 @@
         });
     }
 
-    // ------------------ utilitários: drag / resize ------------------
+    // ------------------ utilitarios: drag / resize ------------------
 
     function makeDraggable(el, handle) {
         let startX = 0;
@@ -932,7 +923,7 @@
             let newLeft = startLeft + dx;
             let newTop = startTop + dy;
 
-            // limites básicos da viewport
+            // limites basicos da viewport
             const maxLeft = window.innerWidth - el.offsetWidth;
             const maxTop = window.innerHeight - el.offsetHeight;
 
@@ -987,17 +978,5 @@
 
         el.appendChild(grip);
     }
-
-    // ------------------ atalho de teclado para o painel ------------------
-
-    window.addEventListener('keydown', (e) => {
-        // Ctrl + Alt/Option + N
-        const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
-        const altOrOption = isMac ? e.altKey || e.metaKey : e.altKey;
-        if (e.key && e.key.toLowerCase() === 'n' && e.ctrlKey && altOrOption) {
-            e.preventDefault();
-            openNotesPanel();
-        }
-    });
 
 })();
