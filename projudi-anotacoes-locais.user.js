@@ -15,6 +15,7 @@
 // @grant        GM_listValues
 // @grant        GM_deleteValue
 // @grant        GM_registerMenuCommand
+// @grant        GM_unregisterMenuCommand
 // ==/UserScript==
 
 (function () {
@@ -25,11 +26,13 @@
 
     const Z_UI = 2147483000;
     const NOTE_PREFIX = 'projudi_note::';
+    const MENU_LABEL = 'Abrir Painel';
 
     const state = {
         mounted: false,
         timer: null,
-        menuRegistered: false
+        menuRegistered: false,
+        menuCommandId: null
     };
 
     // ------------------ deteccao: pagina de processo (CNJ completo) ------------------
@@ -200,14 +203,28 @@
 
     // ------------------ menu da extensao ------------------
 
-    function ensureMenuRegistered() {
-        if (state.menuRegistered) return;
+    function ensureMenuRegistered(force = false) {
         if (typeof GM_registerMenuCommand !== 'function') return;
 
-        GM_registerMenuCommand('Abrir Painel', () => {
-            openNotesPanel();
-        });
-        state.menuRegistered = true;
+        if (force) {
+            try {
+                if (state.menuRegistered && state.menuCommandId !== null && typeof GM_unregisterMenuCommand === 'function') {
+                    GM_unregisterMenuCommand(state.menuCommandId);
+                }
+            } catch {}
+            state.menuCommandId = null;
+            state.menuRegistered = false;
+        }
+
+        if (state.menuRegistered) return;
+
+        try {
+            const id = GM_registerMenuCommand(MENU_LABEL, () => {
+                openNotesPanel();
+            });
+            state.menuCommandId = id == null ? null : id;
+            state.menuRegistered = true;
+        } catch {}
     }
 
     // ------------------ toggle da nota a partir do botao flutuante ------------------
@@ -229,7 +246,7 @@
         if (document.getElementById('pj-add-btn')) return;
 
         ensureMaterialIconsLoaded();
-        ensureMenuRegistered();
+        ensureMenuRegistered(false);
 
         const btn = document.createElement('button');
         btn.id = 'pj-add-btn';
@@ -978,5 +995,16 @@
 
         el.appendChild(grip);
     }
+
+    function reviveAfterReturn() {
+        ensureMenuRegistered(true);
+        evaluate();
+    }
+
+    window.addEventListener('pageshow', reviveAfterReturn, true);
+    window.addEventListener('focus', reviveAfterReturn, true);
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) reviveAfterReturn();
+    });
 
 })();
