@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Post-it local
 // @namespace    projudi-anotacoes-locais.user.js
-// @version      1.9
+// @version      2.0
 // @icon         https://img.icons8.com/ios-filled/100/scales--v1.png
 // @description  Adiciona Post-it local ao Projudi, com painel de notas, importação e exportação.
 // @author       lourencosv (GPT)
@@ -159,6 +159,11 @@
 
     function evaluate() {
         const ok = isProcessPage(document);
+        const hasButton = !!document.getElementById('pj-add-btn');
+
+        if (state.mounted && !hasButton) {
+            state.mounted = false;
+        }
 
         if (ok && !state.mounted) {
             mountButton();
@@ -200,43 +205,43 @@
         style.id = 'pj-ui-style';
         style.textContent = `
             #pj-add-btn {
-                position: fixed;
-                top: 8px;
-                left: 8px;
-                width: 38px;
-                height: 38px;
-                border: 0;
-                border-radius: 999px;
-                background: #2b69aa;
-                color: #ffffff;
-                box-shadow: 0 6px 14px rgba(43, 105, 170, .35);
-                cursor: pointer;
-                z-index: ${Z_UI};
-                display: inline-flex;
-                align-items: center;
-                justify-content: center;
-                font-size: 15px;
-                line-height: 1;
+                position: relative !important;
+                margin: 0 10px 0 12px !important;
+                color: #d4a017 !important;
+                z-index: ${Z_UI} !important;
+            }
+
+            #pj-add-btn i {
+                color: #d4a017 !important;
+                display: inline-block !important;
+                line-height: 1 !important;
+                vertical-align: middle !important;
+                transform: scale(0.92) !important;
+                transform-origin: center center !important;
             }
 
             #pj-add-btn:hover {
-                filter: brightness(1.06);
+                filter: brightness(1.1);
             }
 
-            #pj-note-badge {
+            #pj-add-btn[data-has-note='1']::after {
+                content: '!';
                 position: absolute;
-                top: -4px;
-                right: -4px;
-                min-width: 16px;
-                height: 16px;
-                border-radius: 999px;
-                background: #dc2626;
-                color: #fff;
-                font: 700 11px/16px -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
-                text-align: center;
-                border: 1px solid #fff;
-                box-shadow: 0 1px 3px rgba(0,0,0,.3);
-                pointer-events: none;
+                top: -4px !important;
+                right: -3px !important;
+                display: inline-flex !important;
+                align-items: center !important;
+                justify-content: center !important;
+                width: 14px !important;
+                height: 14px !important;
+                border-radius: 50% !important;
+                background: #dc2626 !important;
+                color: #fff !important;
+                font: 700 9px/1 -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif !important;
+                border: 1px solid #fff !important;
+                box-shadow: 0 1px 2px rgba(0,0,0,.3) !important;
+                pointer-events: none !important;
+                z-index: 1 !important;
             }
 
             #pj-note {
@@ -704,13 +709,27 @@
 
         const btn = document.createElement('button');
         btn.id = 'pj-add-btn';
+        btn.type = 'button';
         btn.title = 'Anotações locais desta página';
-        btn.innerHTML = '<i class="fa-solid fa-pen-to-square" aria-hidden="true"></i>';
+        btn.innerHTML = '<i class="fa-solid fa-pen-to-square fa-3x" aria-hidden="true"></i>';
 
-        btn.addEventListener('mousedown', e => e.preventDefault());
-        btn.addEventListener('click', toggleNoteFromButton);
+        btn.addEventListener('mousedown', e => {
+            e.preventDefault();
+            e.stopPropagation();
+        });
+        btn.addEventListener('click', e => {
+            e.preventDefault();
+            e.stopPropagation();
+            toggleNoteFromButton();
+        });
 
-        document.body.appendChild(btn);
+        const nativeNoteButton = document.querySelector('button.notaProcesso, button[onclick*="criarNota"]');
+        if (!nativeNoteButton || !nativeNoteButton.parentElement) return;
+        if (nativeNoteButton.className) {
+            btn.className = nativeNoteButton.className;
+        }
+        nativeNoteButton.insertAdjacentElement('beforebegin', btn);
+
         state.mounted = true;
         updateNoteIndicator();
     }
@@ -719,19 +738,17 @@
         const btn = document.getElementById('pj-add-btn');
         if (!btn) return;
 
-        const existing = document.getElementById('pj-note-badge');
         const hasNote = hasNonEmptyNoteForCurrentPage();
 
-        if (hasNote && !existing) {
-            const badge = document.createElement('span');
-            badge.id = 'pj-note-badge';
-            badge.textContent = '!';
-            badge.title = 'Há nota neste processo';
-            btn.appendChild(badge);
-        }
+        const legacyBadge = document.getElementById('pj-note-badge');
+        if (legacyBadge) legacyBadge.remove();
 
-        if (!hasNote && existing) {
-            existing.remove();
+        if (hasNote) {
+            btn.dataset.hasNote = '1';
+            btn.title = 'Anotações locais desta página (há nota)';
+        } else {
+            delete btn.dataset.hasNote;
+            btn.title = 'Anotações locais desta página';
         }
     }
 
