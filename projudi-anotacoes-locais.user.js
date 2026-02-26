@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Post-it local
+// @name         Anotações Locais
 // @namespace    projudi-anotacoes-locais.user.js
-// @version      2.1
+// @version      2.2
 // @icon         https://img.icons8.com/ios-filled/100/scales--v1.png
 // @description  Adiciona Post-it local ao Projudi, com painel de notas, importação e exportação.
 // @author       lourencosv (GPT)
@@ -29,7 +29,7 @@
     const Z_UI = 2147483000;
     const NOTE_PREFIX = 'projudi_note::';
     const NOTE_META_PREFIX = 'projudi_note_meta::';
-    const MENU_LABEL = 'Abrir Painel';
+    const MENU_LABEL = 'Post-it: Abrir Painel';
     const CNJ_REGEX = /\b\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}\b/;
     const NOTE_COLORS = [
         { id: 'yellow', label: 'Amarela', body: '#fff7b2', header: '#f4e38a', border: '#e3d37d', text: '#4a3f00' },
@@ -64,6 +64,26 @@
             onVisibilityChange: null
         }
     };
+
+    function lockBodyScroll(doc = document) {
+        const body = doc && doc.body;
+        if (!body) return () => {};
+        const win = (doc && doc.defaultView) || window;
+        const KEY = "__pjBodyScrollLock__";
+        const lockState = win[KEY] || (win[KEY] = { count: 0, prevOverflow: "" });
+        if (lockState.count === 0) {
+            lockState.prevOverflow = body.style.overflow;
+            body.style.overflow = 'hidden';
+        }
+        lockState.count += 1;
+        let released = false;
+        return () => {
+            if (released) return;
+            released = true;
+            lockState.count = Math.max(0, lockState.count - 1);
+            if (lockState.count === 0) body.style.overflow = lockState.prevOverflow;
+        };
+    }
 
     function isProcessPage(doc) {
         if (!doc || !doc.body) return false;
@@ -1200,7 +1220,7 @@
         ensureUiAssetsLoaded(rootDoc);
 
         const notes = getAllNotes();
-        const previousBodyOverflow = rootDoc.body.style.overflow;
+        const unlockBodyScroll = lockBodyScroll(rootDoc);
 
         const overlay = rootDoc.createElement('div');
         overlay.id = 'pj-notes-panel';
@@ -1409,7 +1429,6 @@
         panel.append(header, body);
         overlay.appendChild(panel);
         rootDoc.body.appendChild(overlay);
-        rootDoc.body.style.overflow = 'hidden';
 
         rootWin.requestAnimationFrame(() => {
             panel.style.transform = 'translateY(0) scale(1)';
@@ -1417,7 +1436,7 @@
         });
 
         function closePanel() {
-            rootDoc.body.style.overflow = previousBodyOverflow;
+            unlockBodyScroll();
             overlay.remove();
             rootDoc.removeEventListener('keydown', onEsc);
         }
