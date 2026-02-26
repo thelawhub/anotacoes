@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Post-it local
 // @namespace    projudi-anotacoes-locais.user.js
-// @version      2.0
+// @version      2.1
 // @icon         https://img.icons8.com/ios-filled/100/scales--v1.png
 // @description  Adiciona Post-it local ao Projudi, com painel de notas, importação e exportação.
 // @author       lourencosv (GPT)
@@ -21,12 +21,16 @@
 (function () {
     'use strict';
 
-    if (window.top === window.self) return;
+    const INSTANCE_KEY = '__projudi_postit_local_instance__';
+    if (window[INSTANCE_KEY] && typeof window[INSTANCE_KEY].destroy === 'function') {
+        try { window[INSTANCE_KEY].destroy(); } catch (_) {}
+    }
 
     const Z_UI = 2147483000;
     const NOTE_PREFIX = 'projudi_note::';
     const NOTE_META_PREFIX = 'projudi_note_meta::';
     const MENU_LABEL = 'Abrir Painel';
+    const CNJ_REGEX = /\b\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}\b/;
     const NOTE_COLORS = [
         { id: 'yellow', label: 'Amarela', body: '#fff7b2', header: '#f4e38a', border: '#e3d37d', text: '#4a3f00' },
         { id: 'blue', label: 'Azul', body: '#dff0ff', header: '#c9e5ff', border: '#adcff2', text: '#0f3b63' },
@@ -39,19 +43,38 @@
     const state = {
         mounted: false,
         timer: null,
+        scheduled: false,
+        observer: null,
         menuRegistered: false,
-        menuCommandId: null
+        menuCommandId: null,
+        scratchHtmlEl: null,
+        fallbackNoteKeyByCnjKey: Object.create(null),
+        noteHtmlCheckCache: {
+            signature: null,
+            hasText: false
+        },
+        indicatorCache: {
+            signature: null,
+            hasNote: null
+        },
+        handlers: {
+            onLoad: null,
+            onPageShow: null,
+            onFocus: null,
+            onVisibilityChange: null
+        }
     };
 
     function isProcessPage(doc) {
         if (!doc || !doc.body) return false;
         const text = doc.body.innerText || '';
-        return /\b\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}\b/.test(text);
+        return CNJ_REGEX.test(text);
     }
 
     function getProcessContext() {
+        if (!document.body) return null;
         const text = document.body.innerText || '';
-        const match = text.match(/\b\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}\b/);
+        const match = text.match(CNJ_REGEX);
         if (!match) return null;
 
         const cnj = match[0];
@@ -116,8 +139,34 @@
         };
     }
 
-    function resolveNoteForCurrentPage() {
-        const ctx = getProcessContext();
+    function getScratchHtmlEl() {
+        if (!state.scratchHtmlEl) {
+            state.scratchHtmlEl = document.createElement('div');
+        }
+        return state.scratchHtmlEl;
+    }
+
+    function noteHtmlHasVisibleText(html) {
+        if (!html) return false;
+
+        const signature = `${html.length}:${html.slice(0, 96)}`;
+        if (state.noteHtmlCheckCache.signature === signature) {
+            return state.noteHtmlCheckCache.hasText;
+        }
+
+        const tmp = getScratchHtmlEl();
+        tmp.innerHTML = html;
+        const text = (tmp.innerText || tmp.textContent || '').replace(/\s+/g, '').trim();
+        const hasText = !!text;
+        tmp.innerHTML = '';
+
+        state.noteHtmlCheckCache.signature = signature;
+        state.noteHtmlCheckCache.hasText = hasText;
+        return hasText;
+    }
+
+    function resolveNoteForCurrentPage(ctxOverride) {
+        const ctx = ctxOverride || getProcessContext();
         if (!ctx) return null;
 
         let key = storageKey(ctx);
@@ -125,8 +174,16 @@
 
         if (html === null || typeof html === 'undefined') {
             const prefixForCnj = `${NOTE_PREFIX}${ctx.key}::`;
-            const keys = typeof GM_listValues === 'function' ? GM_listValues() : [];
-            const fallbackKey = keys.find(k => k.startsWith(prefixForCnj));
+            let fallbackKey = state.fallbackNoteKeyByCnjKey[ctx.key] || null;
+            if (fallbackKey && !String(fallbackKey).startsWith(prefixForCnj)) {
+                fallbackKey = null;
+            }
+
+            if (!fallbackKey) {
+                const keys = typeof GM_listValues === 'function' ? GM_listValues() : [];
+                fallbackKey = keys.find(k => k.startsWith(prefixForCnj)) || null;
+                state.fallbackNoteKeyByCnjKey[ctx.key] = fallbackKey;
+            }
 
             if (fallbackKey) {
                 key = fallbackKey;
@@ -143,26 +200,50 @@
         };
     }
 
-    function hasNonEmptyNoteForCurrentPage() {
-        const resolved = resolveNoteForCurrentPage();
+    function hasNonEmptyNoteForCurrentPage(resolvedOverride) {
+        const resolved = resolvedOverride || resolveNoteForCurrentPage();
         if (!resolved) return false;
+        return noteHtmlHasVisibleText(resolved.html);
+    }
 
-        const html = resolved.html;
-        if (!html) return false;
+    function scheduleEvaluate(delay = 250, options = {}) {
+        const reset = !!(options && options.reset);
+        if (state.scheduled && !reset) return;
 
-        const tmp = document.createElement('div');
-        tmp.innerHTML = html;
-        const text = (tmp.innerText || '').replace(/\s+/g, '').trim();
-
-        return !!text;
+        clearTimeout(state.timer);
+        state.scheduled = true;
+        state.timer = setTimeout(() => {
+            state.scheduled = false;
+            evaluate();
+        }, delay);
     }
 
     function evaluate() {
-        const ok = isProcessPage(document);
-        const hasButton = !!document.getElementById('pj-add-btn');
+        if (!document.documentElement) return;
+
+        const ctx = getProcessContext();
+        const ok = !!ctx;
+        cleanupDuplicateButtons();
+        let btn = document.getElementById('pj-add-btn');
+        if (btn) {
+            const bcs = window.getComputedStyle(btn);
+            const brokenMount = bcs.display === 'none' || bcs.visibility === 'hidden' || btn.offsetWidth === 0 || btn.offsetHeight === 0;
+            if (brokenMount) {
+                btn.remove();
+                state.mounted = false;
+                btn = null;
+            }
+        }
+        const hasButton = !!btn;
+        const hasNativeAnchor = !!getNativeAnchorButton();
 
         if (state.mounted && !hasButton) {
             state.mounted = false;
+        }
+
+        if (state.mounted && hasButton && !hasNativeAnchor) {
+            unmountAll();
+            return;
         }
 
         if (ok && !state.mounted) {
@@ -170,7 +251,7 @@
         }
 
         if (ok && state.mounted) {
-            updateNoteIndicator();
+            updateNoteIndicator(false, resolveNoteForCurrentPage(ctx));
         }
 
         if (!ok && state.mounted) {
@@ -178,17 +259,28 @@
         }
     }
 
-    window.addEventListener('load', () => setTimeout(evaluate, 300));
+    state.handlers.onLoad = () => scheduleEvaluate(300, { reset: true });
+    window.addEventListener('load', state.handlers.onLoad);
 
-    const obs = new MutationObserver(() => {
-        clearTimeout(state.timer);
-        state.timer = setTimeout(evaluate, 250);
+    state.observer = new MutationObserver(mutations => {
+        if (document.hidden) return;
+
+        const isOwnUiMutation = mutations.every(m => {
+            const t = m.target;
+            return t && t.nodeType === 1 && typeof t.closest === 'function' &&
+                t.closest('#pj-note, #pj-notes-panel, #pj-add-btn');
+        });
+        if (isOwnUiMutation) return;
+
+        scheduleEvaluate(250);
     });
 
-    obs.observe(document.documentElement, {
+    state.observer.observe(document.documentElement, {
         childList: true,
         subtree: true
     });
+
+    scheduleEvaluate(80, { reset: true });
 
     function ensureUiAssetsLoaded(targetDoc = document) {
         if (!targetDoc.getElementById('pj-fa-link')) {
@@ -206,7 +298,6 @@
         style.textContent = `
             #pj-add-btn {
                 position: relative !important;
-                margin: 0 10px 0 12px !important;
                 color: #d4a017 !important;
                 z-index: ${Z_UI} !important;
             }
@@ -264,7 +355,12 @@
                 color: var(--pj-note-text, #4a3f00);
             }
 
-            .pj-note-header {
+            #pj-note,
+            #pj-note * {
+                box-sizing: border-box;
+            }
+
+            #pj-note .pj-note-header {
                 padding: 8px 10px;
                 background: var(--pj-note-header, #f4e38a);
                 color: var(--pj-note-text, #4a3f00);
@@ -276,7 +372,7 @@
                 gap: 6px;
             }
 
-            .pj-note-title {
+            #pj-note .pj-note-title {
                 font-size: 13px;
                 font-weight: 600;
                 display: inline-flex;
@@ -289,13 +385,13 @@
                 text-overflow: ellipsis;
             }
 
-            .pj-note-actions {
+            #pj-note .pj-note-actions {
                 display: flex;
                 align-items: center;
                 gap: 6px;
             }
 
-            .pj-note-icon-btn {
+            #pj-note .pj-note-icon-btn {
                 border: 0;
                 background: rgba(0,0,0,.08);
                 color: inherit;
@@ -310,12 +406,12 @@
                 justify-content: center;
             }
 
-            .pj-note-icon-btn[data-danger='1'] {
+            #pj-note .pj-note-icon-btn[data-danger='1'] {
                 background: #b91c1c;
                 color: #ffffff;
             }
 
-            .pj-note-toolbar {
+            #pj-note .pj-note-toolbar {
                 display: flex;
                 flex-direction: column;
                 align-items: stretch;
@@ -326,7 +422,7 @@
                 padding: 6px;
             }
 
-            .pj-note-toolbar-row {
+            #pj-note .pj-note-toolbar-row {
                 display: flex;
                 align-items: center;
                 justify-content: center;
@@ -334,7 +430,7 @@
                 flex-wrap: wrap;
             }
 
-            .pj-note-tool-btn {
+            #pj-note .pj-note-tool-btn {
                 width: 30px;
                 height: 30px;
                 border: 1px solid #cbd5e1;
@@ -349,14 +445,14 @@
                 line-height: 1;
             }
 
-            .pj-note-color-row {
+            #pj-note .pj-note-color-row {
                 display: inline-flex;
                 align-items: center;
                 justify-content: center;
                 gap: 5px;
             }
 
-            .pj-note-color-dot {
+            #pj-note .pj-note-color-dot {
                 appearance: none;
                 -webkit-appearance: none;
                 margin: 0;
@@ -378,12 +474,12 @@
                 vertical-align: middle;
             }
 
-            .pj-note-color-dot[data-selected='1'] {
+            #pj-note .pj-note-color-dot[data-selected='1'] {
                 outline: 2px solid #2b69aa;
                 outline-offset: 1px;
             }
 
-            .pj-note-editor {
+            #pj-note .pj-note-editor {
                 flex: 1;
                 padding: 8px;
                 outline: none;
@@ -393,7 +489,7 @@
                 background: transparent;
             }
 
-            .pj-note-resize {
+            #pj-note .pj-note-resize {
                 position: absolute;
                 right: 0;
                 bottom: 0;
@@ -405,6 +501,21 @@
             }
 
             #pj-notes-panel {
+                --pj-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+                --pj-font-size-base: 14px;
+                --pj-line-height-base: 1.35;
+                --pj-color-text: #0f172a;
+                --pj-color-text-muted: #64748b;
+                --pj-color-border: #dbe3ef;
+                --pj-color-border-control: #cbd5e1;
+                --pj-color-surface-soft: #f8fafc;
+                --pj-radius-sm: 8px;
+                --pj-radius-md: 10px;
+                --pj-radius-lg: 14px;
+                --pj-space-2: 8px;
+                --pj-space-3: 10px;
+                --pj-space-4: 12px;
+                --pj-space-5: 16px;
                 position: fixed;
                 inset: 0;
                 background: rgba(11, 18, 32, .50);
@@ -415,17 +526,25 @@
                 align-items: center;
                 justify-content: center;
                 padding: 18px;
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+                font-family: var(--pj-font-family);
+                font-size: var(--pj-font-size-base);
+                line-height: var(--pj-line-height-base);
+                color: var(--pj-color-text);
             }
 
-            .pj-panel {
+            #pj-notes-panel,
+            #pj-notes-panel * {
+                box-sizing: border-box;
+            }
+
+            #pj-notes-panel .pj-panel {
                 width: min(980px, calc(100vw - 24px));
-                max-height: calc(100vh - 34px);
+                max-height: min(88vh, 860px);
                 background: #ffffff;
-                color: #0f172a;
-                border-radius: 14px;
+                color: var(--pj-color-text);
+                border-radius: var(--pj-radius-lg);
                 box-shadow: 0 24px 70px rgba(2, 6, 23, .30);
-                border: 1px solid #dbe3ef;
+                border: 1px solid var(--pj-color-border);
                 overflow: hidden;
                 display: flex;
                 flex-direction: column;
@@ -434,29 +553,29 @@
                 transition: transform .16s ease, opacity .16s ease;
             }
 
-            .pj-panel-header {
+            #pj-notes-panel .pj-panel-header {
                 padding: 14px 16px;
                 background: linear-gradient(135deg,#0f3e75,#1f5ca4);
                 color: #ffffff;
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
-                gap: 12px;
+                gap: var(--pj-space-4);
             }
 
-            .pj-panel-title {
+            #pj-notes-panel .pj-panel-title {
                 font-size: 16px;
                 font-weight: 700;
                 line-height: 1.2;
             }
 
-            .pj-panel-subtitle {
+            #pj-notes-panel .pj-panel-subtitle {
                 font-size: 12px;
                 opacity: .9;
                 margin-top: 2px;
             }
 
-            .pj-panel-close {
+            #pj-notes-panel .pj-panel-close {
                 border: 0;
                 width: 28px;
                 height: 28px;
@@ -467,198 +586,213 @@
                 display: inline-flex;
                 align-items: center;
                 justify-content: center;
-                font-size: 13px;
+                font-size: 14px;
+                font-weight: 500;
+                line-height: 1.2;
             }
 
-            .pj-panel-body {
+            #pj-notes-panel .pj-panel-body {
                 display: flex;
                 flex: 1;
                 min-height: 320px;
-                background: #f8fafc;
+                background: var(--pj-color-surface-soft);
             }
 
-            .pj-panel-left,
-            .pj-panel-right {
+            #pj-notes-panel .pj-panel-left,
+            #pj-notes-panel .pj-panel-right {
                 display: flex;
                 flex-direction: column;
                 min-height: 0;
             }
 
-            .pj-panel-left {
+            #pj-notes-panel .pj-panel-left {
                 flex: 3;
                 border-right: 1px solid #e5e7eb;
             }
 
-            .pj-panel-right {
+            #pj-notes-panel .pj-panel-right {
                 flex: 2;
             }
 
-            .pj-section-title {
-                padding: 9px 10px;
+            #pj-notes-panel .pj-section-title {
+                padding: 10px 12px;
                 border-bottom: 1px solid #e5e7eb;
                 font-weight: 600;
                 background: #f1f5f9;
+                font-size: 14px;
+                line-height: 1.35;
             }
 
-            .pj-note-list {
+            #pj-notes-panel .pj-note-list {
                 flex: 1;
                 overflow-y: auto;
-                padding: 8px;
+                padding: 10px;
                 display: flex;
                 flex-direction: column;
-                gap: 8px;
+                gap: 10px;
                 min-height: 0;
             }
 
-            .pj-note-item {
+            #pj-notes-panel .pj-note-item {
                 border: 1px solid #e5e7eb;
                 border-radius: 10px;
                 background: #ffffff;
-                padding: 8px 10px;
+                padding: 12px;
                 cursor: pointer;
                 position: relative;
             }
 
-            .pj-note-item[data-selected='1'] {
+            #pj-notes-panel .pj-note-item[data-selected='1'] {
                 background: #eff6ff;
                 border-color: #bfdbfe;
             }
 
-            .pj-note-line1 {
-                font-size: 12px;
+            #pj-notes-panel .pj-note-line1 {
+                font-size: 14px;
                 font-weight: 700;
-                color: #0f172a;
+                color: var(--pj-color-text);
                 margin-right: 62px;
+                line-height: 1.2;
             }
 
-            .pj-note-line2 {
-                font-size: 11px;
-                color: #64748b;
+            #pj-notes-panel .pj-note-line2 {
+                font-size: 12px;
+                color: var(--pj-color-text-muted);
                 margin-top: 2px;
                 margin-right: 62px;
                 word-break: break-all;
             }
 
-            .pj-note-line3 {
-                font-size: 11px;
+            #pj-notes-panel .pj-note-line3 {
+                font-size: 12px;
                 color: #334155;
                 margin-top: 5px;
+                line-height: 1.35;
             }
 
-            .pj-note-delete {
+            #pj-notes-panel .pj-note-delete {
                 position: absolute;
                 top: 6px;
                 right: 8px;
                 border: 1px solid #fecaca;
                 border-radius: 7px;
                 padding: 2px 7px;
-                font-size: 11px;
+                font-size: 12px;
                 cursor: pointer;
                 background: #fee2e2;
                 color: #b91c1c;
                 font-weight: 600;
             }
 
-            .pj-preview-title {
+            #pj-notes-panel .pj-preview-title {
                 padding: 7px 8px 0;
-                font-size: 11px;
-                color: #64748b;
+                font-size: 12px;
+                color: var(--pj-color-text-muted);
             }
 
-            .pj-preview-box {
+            #pj-notes-panel .pj-preview-box {
                 margin: 4px 8px 8px;
-                border-radius: 10px;
+                border-radius: var(--pj-radius-md);
                 background: #ffffff;
                 border: 1px solid #e5e7eb;
-                padding: 8px;
+                padding: 12px;
                 min-height: 90px;
                 max-height: 170px;
                 overflow-y: auto;
-                font-size: 12px;
+                font-size: 14px;
+                line-height: 1.35;
                 color: #334155;
             }
 
-            .pj-panel-right-body {
-                padding: 8px;
+            #pj-notes-panel .pj-panel-right-body {
+                padding: 12px;
                 display: flex;
                 flex-direction: column;
-                gap: 8px;
+                gap: 12px;
                 flex: 1;
                 min-height: 0;
             }
 
-            .pj-info {
-                font-size: 11px;
+            #pj-notes-panel .pj-info {
+                font-size: 12px;
                 color: #475569;
-                line-height: 1.45;
+                line-height: 1.35;
                 border: 1px solid #e5e7eb;
-                border-radius: 10px;
+                border-radius: var(--pj-radius-md);
                 background: #ffffff;
-                padding: 10px;
+                padding: 12px;
             }
 
-            #pj-notes-io {
+            #pj-notes-panel #pj-notes-io {
                 flex: 1;
                 min-height: 120px;
                 width: 100%;
                 resize: vertical;
-                border: 1px solid #cbd5e1;
-                border-radius: 10px;
-                padding: 8px;
-                box-sizing: border-box;
+                border: 1px solid var(--pj-color-border-control);
+                border-radius: var(--pj-radius-sm);
+                padding: 6px 8px;
                 font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
                 font-size: 12px;
-                color: #0f172a;
+                line-height: 1.35;
+                color: var(--pj-color-text);
                 background: #ffffff;
             }
 
-            .pj-row-btns {
+            #pj-notes-panel .pj-row-btns {
                 display: flex;
                 gap: 8px;
+                flex-wrap: wrap;
             }
 
-            .pj-btn {
-                flex: 1;
+            #pj-notes-panel .pj-btn {
+                flex: 1 1 auto;
+                min-width: 86px;
                 min-height: 34px;
-                padding: 7px 9px;
+                padding: 7px 11px;
                 border-radius: 8px;
-                border: 1px solid #cbd5e1;
+                border: 1px solid var(--pj-color-border-control);
                 background: #ffffff;
                 color: #1e293b;
                 cursor: pointer;
-                font-size: 12px;
-                font-weight: 600;
+                font-size: 14px;
+                font-weight: 500;
+                line-height: 1.2;
                 display: inline-flex;
                 align-items: center;
                 justify-content: center;
                 gap: 6px;
             }
 
-            .pj-btn[data-variant='primary'] {
+            #pj-notes-panel .pj-btn[data-variant='primary'] {
                 color: #ffffff;
                 background: #0f3e75;
                 border-color: #0f3e75;
             }
 
-            .pj-btn[data-variant='success'] {
+            #pj-notes-panel .pj-btn[data-variant='success'] {
                 color: #ffffff;
                 background: #15803d;
                 border-color: #15803d;
             }
 
             @media (max-width: 860px) {
-                .pj-panel-body {
+                #pj-notes-panel .pj-panel-body {
                     flex-direction: column;
                 }
 
-                .pj-panel-left {
+                #pj-notes-panel .pj-panel-left {
                     border-right: 0;
                     border-bottom: 1px solid #e5e7eb;
                     min-height: 230px;
                 }
 
-                .pj-panel-right {
+                #pj-notes-panel .pj-panel-right {
                     min-height: 220px;
+                }
+
+                #pj-notes-panel .pj-panel-right-body {
+                    padding: 12px;
+                    gap: 10px;
                 }
             }
         `;
@@ -701,8 +835,110 @@
         openNote();
     }
 
+    function getNativeAnchorButton() {
+        const candidates = Array.from(document.querySelectorAll([
+            'button.notaProcesso',
+            'button[onclick*="criarNota"]',
+            'a.notaProcesso',
+            'a[onclick*="criarNota"]'
+        ].join(', ')));
+        if (!candidates.length) return null;
+
+        const visible = candidates.find(btn => {
+            const cs = window.getComputedStyle(btn);
+            if (cs.display === 'none' || cs.visibility === 'hidden') return false;
+            return true;
+        });
+
+        return visible || candidates[0];
+    }
+
+    function cleanupDuplicateButtons() {
+        const buttons = Array.from(document.querySelectorAll('#pj-add-btn'));
+        if (buttons.length <= 1) return;
+        buttons.slice(1).forEach(el => el.remove());
+    }
+
+    function applyIntegratedButtonLayout(btn, nativeBtn) {
+        const cs = window.getComputedStyle(nativeBtn);
+        const isFloatRight = cs.float === 'right';
+        const isHiddenAnchor = cs.display === 'none' || cs.visibility === 'hidden';
+        const widthPx = parseFloat(cs.width) || 0;
+        const heightPx = parseFloat(cs.height) || 0;
+        const hasUsableSize = widthPx > 0 && heightPx > 0;
+
+        btn.style.setProperty('float', cs.float || 'none', 'important');
+        btn.style.setProperty('margin-top', cs.marginTop, 'important');
+        btn.style.setProperty('margin-right', cs.marginRight, 'important');
+        btn.style.setProperty('margin-bottom', cs.marginBottom, 'important');
+        btn.style.setProperty('margin-left', cs.marginLeft, 'important');
+        btn.style.setProperty('padding-top', cs.paddingTop, 'important');
+        btn.style.setProperty('padding-right', cs.paddingRight, 'important');
+        btn.style.setProperty('padding-bottom', cs.paddingBottom, 'important');
+        btn.style.setProperty('padding-left', cs.paddingLeft, 'important');
+        btn.style.setProperty('border-top-width', cs.borderTopWidth, 'important');
+        btn.style.setProperty('border-right-width', cs.borderRightWidth, 'important');
+        btn.style.setProperty('border-bottom-width', cs.borderBottomWidth, 'important');
+        btn.style.setProperty('border-left-width', cs.borderLeftWidth, 'important');
+        btn.style.setProperty('border-top-style', cs.borderTopStyle, 'important');
+        btn.style.setProperty('border-right-style', cs.borderRightStyle, 'important');
+        btn.style.setProperty('border-bottom-style', cs.borderBottomStyle, 'important');
+        btn.style.setProperty('border-left-style', cs.borderLeftStyle, 'important');
+        btn.style.setProperty('border-top-color', cs.borderTopColor, 'important');
+        btn.style.setProperty('border-right-color', cs.borderRightColor, 'important');
+        btn.style.setProperty('border-bottom-color', cs.borderBottomColor, 'important');
+        btn.style.setProperty('border-left-color', cs.borderLeftColor, 'important');
+        btn.style.setProperty('border-radius', cs.borderRadius, 'important');
+        btn.style.setProperty('background', cs.background, 'important');
+        btn.style.setProperty('box-shadow', cs.boxShadow, 'important');
+        if (!isHiddenAnchor) {
+            btn.style.setProperty('display', cs.display === 'inline' ? 'inline-block' : cs.display, 'important');
+        } else {
+            btn.style.setProperty('display', 'inline-block', 'important');
+        }
+
+        if (!isHiddenAnchor && cs.visibility && cs.visibility !== 'collapse') {
+            btn.style.setProperty('visibility', cs.visibility, 'important');
+        } else {
+            btn.style.setProperty('visibility', 'visible', 'important');
+        }
+
+        btn.style.setProperty('vertical-align', cs.verticalAlign || 'middle', 'important');
+        btn.style.setProperty('cursor', cs.cursor || 'pointer', 'important');
+        btn.style.setProperty('line-height', cs.lineHeight, 'important');
+        btn.style.setProperty('text-align', cs.textAlign, 'important');
+        if (hasUsableSize) {
+            btn.style.setProperty('width', cs.width, 'important');
+            btn.style.setProperty('height', cs.height, 'important');
+            btn.style.setProperty('min-width', cs.width, 'important');
+            btn.style.setProperty('min-height', cs.height, 'important');
+        } else {
+            btn.style.removeProperty('width');
+            btn.style.removeProperty('height');
+            btn.style.removeProperty('min-width');
+            btn.style.removeProperty('min-height');
+        }
+        btn.style.setProperty('overflow', 'visible', 'important');
+        btn.style.setProperty('opacity', '1', 'important');
+
+        const ml = parseFloat(cs.marginLeft) || 0;
+        const mr = parseFloat(cs.marginRight) || 0;
+        if (isFloatRight) {
+            btn.style.setProperty('margin-left', `${Math.max(ml, 8)}px`, 'important');
+        } else {
+            btn.style.setProperty('margin-right', `${Math.max(mr, 8)}px`, 'important');
+        }
+    }
+
     function mountButton() {
-        if (document.getElementById('pj-add-btn')) return;
+        cleanupDuplicateButtons();
+        if (document.getElementById('pj-add-btn')) {
+            state.mounted = true;
+            return;
+        }
+
+        const nativeNoteButton = getNativeAnchorButton();
+        if (!nativeNoteButton || !nativeNoteButton.parentElement) return;
 
         ensureUiAssetsLoaded();
         ensureMenuRegistered(false);
@@ -723,22 +959,36 @@
             toggleNoteFromButton();
         });
 
-        const nativeNoteButton = document.querySelector('button.notaProcesso, button[onclick*="criarNota"]');
-        if (!nativeNoteButton || !nativeNoteButton.parentElement) return;
-        if (nativeNoteButton.className) {
-            btn.className = nativeNoteButton.className;
-        }
-        nativeNoteButton.insertAdjacentElement('beforebegin', btn);
+        applyIntegratedButtonLayout(btn, nativeNoteButton);
+
+        const parentCs = window.getComputedStyle(nativeNoteButton.parentElement);
+        const parentDisplay = parentCs.display || '';
+        const parentFlexDir = parentCs.flexDirection || '';
+        const visualOrderReversed = parentDisplay.includes('flex') && parentFlexDir.includes('reverse');
+        const nativeFloat = window.getComputedStyle(nativeNoteButton).float;
+        const insertBefore = nativeFloat === 'right' || visualOrderReversed;
+
+        nativeNoteButton.insertAdjacentElement(insertBefore ? 'beforebegin' : 'afterend', btn);
 
         state.mounted = true;
-        updateNoteIndicator();
+        updateNoteIndicator(true);
     }
 
-    function updateNoteIndicator() {
+    function updateNoteIndicator(force = false, resolvedOverride) {
         const btn = document.getElementById('pj-add-btn');
         if (!btn) return;
 
-        const hasNote = hasNonEmptyNoteForCurrentPage();
+        const resolved = resolvedOverride || resolveNoteForCurrentPage();
+        const signature = resolved ? `${resolved.key}|${resolved.html.length}|${resolved.html.slice(0, 64)}` : 'no-note-context';
+        let hasNote;
+
+        if (!force && state.indicatorCache.signature === signature && typeof state.indicatorCache.hasNote === 'boolean') {
+            hasNote = state.indicatorCache.hasNote;
+        } else {
+            hasNote = hasNonEmptyNoteForCurrentPage(resolved);
+            state.indicatorCache.signature = signature;
+            state.indicatorCache.hasNote = hasNote;
+        }
 
         const legacyBadge = document.getElementById('pj-note-badge');
         if (legacyBadge) legacyBadge.remove();
@@ -760,6 +1010,8 @@
         const { doc: rootDoc } = getTopContext();
         const rootPanel = rootDoc.getElementById('pj-notes-panel');
         if (rootPanel) rootPanel.remove();
+        state.indicatorCache.signature = null;
+        state.indicatorCache.hasNote = null;
         state.mounted = false;
     }
 
@@ -885,7 +1137,7 @@
 
         editor.addEventListener('input', () => {
             GM_setValue(key, editor.innerHTML);
-            updateNoteIndicator();
+            updateNoteIndicator(true);
         });
 
         const grip = document.createElement('div');
@@ -903,7 +1155,7 @@
             GM_deleteValue(key);
             deleteNoteColorMeta(key);
             note.remove();
-            updateNoteIndicator();
+            updateNoteIndicator(true);
         });
 
         note.append(header, toolbar, editor);
@@ -1063,7 +1315,7 @@
                 }
 
                 refreshEmptyStateAfterDelete();
-                updateNoteIndicator();
+                updateNoteIndicator(true);
             });
 
             item.append(line1, line2, line3, deleteBtn);
@@ -1083,7 +1335,7 @@
         info.className = 'pj-info';
         info.innerHTML = [
             'Use <strong>Exportar notas</strong> para gerar um JSON com todas as notas.',
-            'Cole um JSON valido abaixo e clique em <strong>Importar notas</strong> para restaurar.'
+            'Cole um JSON válido abaixo e clique em <strong>Importar notas</strong> para restaurar.'
         ].join('<br>');
 
         const textarea = rootDoc.createElement('textarea');
@@ -1145,7 +1397,7 @@
                 count++;
             });
 
-            updateNoteIndicator();
+            updateNoteIndicator(true);
             rootWin.alert(`Importação concluída. ${count} nota(s) importada(s). Reabra o painel para ver a lista atualizada.`);
         });
 
@@ -1269,12 +1521,38 @@
 
     function reviveAfterReturn() {
         ensureMenuRegistered(true);
-        evaluate();
+        scheduleEvaluate(50);
     }
 
-    window.addEventListener('pageshow', reviveAfterReturn, true);
-    window.addEventListener('focus', reviveAfterReturn, true);
-    document.addEventListener('visibilitychange', () => {
+    state.handlers.onPageShow = reviveAfterReturn;
+    state.handlers.onFocus = reviveAfterReturn;
+    state.handlers.onVisibilityChange = () => {
         if (!document.hidden) reviveAfterReturn();
-    });
+    };
+
+    window.addEventListener('pageshow', state.handlers.onPageShow, true);
+    window.addEventListener('focus', state.handlers.onFocus, true);
+    document.addEventListener('visibilitychange', state.handlers.onVisibilityChange);
+
+    function destroy() {
+        clearTimeout(state.timer);
+        state.timer = null;
+        state.scheduled = false;
+
+        try {
+            if (state.observer) state.observer.disconnect();
+        } catch (_) {}
+        state.observer = null;
+
+        try {
+            if (state.handlers.onLoad) window.removeEventListener('load', state.handlers.onLoad);
+            if (state.handlers.onPageShow) window.removeEventListener('pageshow', state.handlers.onPageShow, true);
+            if (state.handlers.onFocus) window.removeEventListener('focus', state.handlers.onFocus, true);
+            if (state.handlers.onVisibilityChange) document.removeEventListener('visibilitychange', state.handlers.onVisibilityChange);
+        } catch (_) {}
+
+        unmountAll();
+    }
+
+    window[INSTANCE_KEY] = { destroy };
 })();
