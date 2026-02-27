@@ -437,8 +437,8 @@
                 align-items: stretch;
                 gap: 5px;
                 background: #f8fafc;
-                border-top: 1px solid #e5e7eb;
-                border-bottom: 1px solid #e5e7eb;
+                border-top: 1px solid #dbe3ef;
+                border-bottom: 1px solid #dbe3ef;
                 padding: 6px;
             }
 
@@ -627,7 +627,7 @@
 
             #pj-notes-panel .pj-panel-left {
                 flex: 3;
-                border-right: 1px solid #e5e7eb;
+                border-right: 1px solid #dbe3ef;
             }
 
             #pj-notes-panel .pj-panel-right {
@@ -636,9 +636,9 @@
 
             #pj-notes-panel .pj-section-title {
                 padding: 10px 12px;
-                border-bottom: 1px solid #e5e7eb;
+                border-bottom: 1px solid #dbe3ef;
                 font-weight: 600;
-                background: #f1f5f9;
+                background: #f8fafc;
                 font-size: 14px;
                 line-height: 1.35;
             }
@@ -654,7 +654,7 @@
             }
 
             #pj-notes-panel .pj-note-item {
-                border: 1px solid #e5e7eb;
+                border: 1px solid #dbe3ef;
                 border-radius: 10px;
                 background: #ffffff;
                 padding: 12px;
@@ -714,7 +714,7 @@
                 margin: 4px 8px 8px;
                 border-radius: var(--pj-radius-md);
                 background: #ffffff;
-                border: 1px solid #e5e7eb;
+                border: 1px solid #dbe3ef;
                 padding: 12px;
                 min-height: 90px;
                 max-height: 170px;
@@ -737,7 +737,7 @@
                 font-size: 12px;
                 color: #475569;
                 line-height: 1.35;
-                border: 1px solid #e5e7eb;
+                border: 1px solid #dbe3ef;
                 border-radius: var(--pj-radius-md);
                 background: #ffffff;
                 padding: 12px;
@@ -802,7 +802,7 @@
 
                 #pj-notes-panel .pj-panel-left {
                     border-right: 0;
-                    border-bottom: 1px solid #e5e7eb;
+                    border-bottom: 1px solid #dbe3ef;
                     min-height: 230px;
                 }
 
