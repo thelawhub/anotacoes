@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anotações Locais
 // @namespace    projudi-anotacoes-locais.user.js
-// @version      2.3
+// @version      2.4
 // @icon         https://img.icons8.com/ios-filled/100/scales--v1.png
 // @description  Adiciona Post-it local ao Projudi, com painel de notas, importação e exportação.
 // @author       lourencosv (GPT)
@@ -29,7 +29,6 @@
     const Z_UI = 2147483000;
     const NOTE_PREFIX = 'projudi_note::';
     const NOTE_META_PREFIX = 'projudi_note_meta::';
-    const MENU_LABEL = 'Post-it: Abrir Painel';
     const CNJ_REGEX = /\b\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4}\b/;
     const NOTE_COLORS = [
         { id: 'yellow', label: 'Amarela', body: '#fff7b2', header: '#f4e38a', border: '#e3d37d', text: '#4a3f00' },
@@ -836,7 +835,7 @@
         if (state.menuRegistered) return;
 
         try {
-            const id = GM_registerMenuCommand(MENU_LABEL, () => {
+            const id = GM_registerMenuCommand('Post-it: Abrir Painel', () => {
                 openNotesPanel();
             });
             state.menuCommandId = id == null ? null : id;
