@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anotações Locais
 // @namespace    projudi-anotacoes-locais.user.js
-// @version      2.5
+// @version      2.6
 // @icon         https://img.icons8.com/ios-filled/100/scales--v1.png
 // @description  Adiciona Post-it local ao Projudi, com painel de notas, importação e exportação.
 // @author       lourencosv (GPT)
@@ -1575,19 +1575,19 @@
         backupBox.style.marginTop = '12px';
         backupBox.innerHTML = `
             <strong>Backup remoto</strong><br>
-            Um unico Gist privado pode armazenar este script em arquivo separado.
+            Um unico Gist no Github pode armazenar este script em arquivo separado.
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;">
                 <input id="pj-notes-backup-gist" type="text" placeholder="Gist ID" value="${backupSettings.gistId}">
                 <input id="pj-notes-backup-file" type="text" placeholder="projudi-anotacoes-locais.json" value="${backupSettings.fileName}">
                 <input id="pj-notes-backup-token" type="password" placeholder="ghp_..." value="${backupSettings.token}" style="grid-column:1 / -1;">
             </div>
             <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;">
-                <label><input id="pj-notes-backup-enabled" type="checkbox" ${backupSettings.enabled ? 'checked' : ''}> Ativar backup</label>
+                <label><input id="pj-notes-backup-enabled" type="checkbox" ${backupSettings.enabled ? 'checked' : ''}> Ativar backup por Gist no Github.</label>
                 <label><input id="pj-notes-backup-auto" type="checkbox" ${backupSettings.autoBackupOnSave ? 'checked' : ''}> Backup automatico</label>
             </div>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px;">
                 <button id="pj-notes-backup-send" class="pj-btn" type="button" data-variant="primary"><i class="fa-solid fa-cloud-arrow-up" aria-hidden="true"></i><span>Enviar backup</span></button>
-                <button id="pj-notes-backup-restore" class="pj-btn" type="button" data-variant="success"><i class="fa-solid fa-cloud-arrow-down" aria-hidden="true"></i><span>Restaurar</span></button>
+                <button id="pj-notes-backup-restore" class="pj-btn" type="button" data-variant="success"><i class="fa-solid fa-cloud-arrow-down" aria-hidden="true"></i><span>Restaurar backup</span></button>
                 <span id="pj-notes-backup-status" style="font-size:12px;color:#475569;"></span>
             </div>
         `;
