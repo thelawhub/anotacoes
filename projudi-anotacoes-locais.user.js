@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anotações Locais
 // @namespace    projudi-anotacoes-locais.user.js
-// @version      2.7
+// @version      2.8
 // @icon         https://img.icons8.com/ios-filled/100/scales--v1.png
 // @description  Adiciona Post-it local ao Projudi, com painel de notas, importação e exportação.
 // @author       lourencosv (GPT)
@@ -283,7 +283,7 @@
         if (response.status < 200 || response.status >= 300) throw new Error(parseGithubError(response));
         const gist = JSON.parse(response.responseText || '{}');
         const file = gist && gist.files ? gist.files[backupSettings.fileName] : null;
-        if (!file || !file.content) throw new Error('Arquivo de backup nao encontrado no Gist.');
+        if (!file || !file.content) throw new Error('Arquivo de backup não encontrado no Gist.');
         return JSON.parse(file.content);
     }
 
@@ -1622,15 +1622,15 @@
         backupBox.style.marginTop = '12px';
         backupBox.innerHTML = `
             <strong>Backup remoto</strong><br>
-            Um unico Gist no Github pode armazenar este script em arquivo separado.
+            Um único Gist no GitHub pode armazenar este script em arquivo separado.
             <div class="pj-backup-grid">
                 <input id="pj-notes-backup-gist" type="text" placeholder="Gist ID" value="${backupSettings.gistId}">
                 <input id="pj-notes-backup-file" type="text" placeholder="projudi-anotacoes-locais.json" value="${backupSettings.fileName}">
                 <input id="pj-notes-backup-token" class="pj-backup-span" type="password" placeholder="ghp_..." value="${backupSettings.token}">
             </div>
             <div class="pj-backup-toggles">
-                <label><input id="pj-notes-backup-enabled" type="checkbox" ${backupSettings.enabled ? 'checked' : ''}> Ativar backup por Gist no Github.</label>
-                <label><input id="pj-notes-backup-auto" type="checkbox" ${backupSettings.autoBackupOnSave ? 'checked' : ''}> Backup automatico</label>
+                <label><input id="pj-notes-backup-enabled" type="checkbox" ${backupSettings.enabled ? 'checked' : ''}> Ativar backup por Gist no GitHub.</label>
+                <label><input id="pj-notes-backup-auto" type="checkbox" ${backupSettings.autoBackupOnSave ? 'checked' : ''}> Backup automático</label>
             </div>
             <div class="pj-backup-actions">
                 <button id="pj-notes-backup-send" class="pj-btn" type="button" data-variant="primary"><i class="fa-solid fa-cloud-arrow-up" aria-hidden="true"></i><span>Enviar backup</span></button>
