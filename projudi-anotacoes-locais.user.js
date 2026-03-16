@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anotações Locais
 // @namespace    projudi-anotacoes-locais.user.js
-// @version      2.6
+// @version      2.7
 // @icon         https://img.icons8.com/ios-filled/100/scales--v1.png
 // @description  Adiciona Post-it local ao Projudi, com painel de notas, importação e exportação.
 // @author       lourencosv (GPT)
@@ -888,6 +888,7 @@
                 gap: 12px;
                 flex: 1;
                 min-height: 0;
+                overflow-y: auto;
             }
 
             #pj-notes-panel .pj-info {
@@ -901,8 +902,9 @@
             }
 
             #pj-notes-panel #pj-notes-io {
-                flex: 1;
+                flex: 0 0 160px;
                 min-height: 120px;
+                max-height: 220px;
                 width: 100%;
                 resize: vertical;
                 border: 1px solid var(--pj-color-border-control);
@@ -919,6 +921,43 @@
                 display: flex;
                 gap: 8px;
                 flex-wrap: wrap;
+            }
+
+            #pj-notes-panel .pj-backup-grid {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 8px;
+                margin-top: 10px;
+            }
+
+            #pj-notes-panel .pj-backup-grid input {
+                width: 100%;
+                min-width: 0;
+            }
+
+            #pj-notes-panel .pj-backup-grid .pj-backup-span {
+                grid-column: 1 / -1;
+            }
+
+            #pj-notes-panel .pj-backup-toggles {
+                display: flex;
+                gap: 14px;
+                flex-wrap: wrap;
+                margin-top: 10px;
+            }
+
+            #pj-notes-panel .pj-backup-actions {
+                display: flex;
+                gap: 8px;
+                align-items: center;
+                flex-wrap: wrap;
+                margin-top: 10px;
+            }
+
+            #pj-notes-panel .pj-backup-status {
+                font-size: 12px;
+                color: #475569;
+                flex: 1 1 100%;
             }
 
             #pj-notes-panel .pj-btn {
@@ -970,6 +1009,14 @@
                 #pj-notes-panel .pj-panel-right-body {
                     padding: 12px;
                     gap: 10px;
+                }
+
+                #pj-notes-panel .pj-backup-grid {
+                    grid-template-columns: 1fr;
+                }
+
+                #pj-notes-panel .pj-backup-grid .pj-backup-span {
+                    grid-column: auto;
                 }
             }
         `;
@@ -1576,19 +1623,19 @@
         backupBox.innerHTML = `
             <strong>Backup remoto</strong><br>
             Um unico Gist no Github pode armazenar este script em arquivo separado.
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;">
+            <div class="pj-backup-grid">
                 <input id="pj-notes-backup-gist" type="text" placeholder="Gist ID" value="${backupSettings.gistId}">
                 <input id="pj-notes-backup-file" type="text" placeholder="projudi-anotacoes-locais.json" value="${backupSettings.fileName}">
-                <input id="pj-notes-backup-token" type="password" placeholder="ghp_..." value="${backupSettings.token}" style="grid-column:1 / -1;">
+                <input id="pj-notes-backup-token" class="pj-backup-span" type="password" placeholder="ghp_..." value="${backupSettings.token}">
             </div>
-            <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;">
+            <div class="pj-backup-toggles">
                 <label><input id="pj-notes-backup-enabled" type="checkbox" ${backupSettings.enabled ? 'checked' : ''}> Ativar backup por Gist no Github.</label>
                 <label><input id="pj-notes-backup-auto" type="checkbox" ${backupSettings.autoBackupOnSave ? 'checked' : ''}> Backup automatico</label>
             </div>
-            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px;">
+            <div class="pj-backup-actions">
                 <button id="pj-notes-backup-send" class="pj-btn" type="button" data-variant="primary"><i class="fa-solid fa-cloud-arrow-up" aria-hidden="true"></i><span>Enviar backup</span></button>
                 <button id="pj-notes-backup-restore" class="pj-btn" type="button" data-variant="success"><i class="fa-solid fa-cloud-arrow-down" aria-hidden="true"></i><span>Restaurar backup</span></button>
-                <span id="pj-notes-backup-status" style="font-size:12px;color:#475569;"></span>
+                <span id="pj-notes-backup-status" class="pj-backup-status"></span>
             </div>
         `;
 
