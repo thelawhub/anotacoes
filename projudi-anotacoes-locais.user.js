@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anotações Locais
 // @namespace    projudi-anotacoes-locais.user.js
-// @version      2.4
+// @version      2.5
 // @icon         https://img.icons8.com/ios-filled/100/scales--v1.png
 // @description  Adiciona Post-it local ao Projudi, com painel de notas, importação e exportação.
 // @author       lourencosv (GPT)
@@ -16,6 +16,8 @@
 // @grant        GM_deleteValue
 // @grant        GM_registerMenuCommand
 // @grant        GM_unregisterMenuCommand
+// @grant        GM_xmlhttpRequest
+// @connect      api.github.com
 // ==/UserScript==
 
 (function () {
@@ -38,6 +40,36 @@
         { id: 'lilac', label: 'Lilás', body: '#efe5ff', header: '#e1d0ff', border: '#cab3ef', text: '#42236c' }
     ];
     const DEFAULT_NOTE_COLOR_ID = 'yellow';
+    const SCRIPT_META = (() => {
+        const fallbackName = 'Anotacoes Locais';
+        const fallbackId = 'projudi-anotacoes-locais';
+        try {
+            const script = GM_info && GM_info.script ? GM_info.script : {};
+            const name = String(script.name || fallbackName).trim() || fallbackName;
+            const namespace = String(script.namespace || '').trim();
+            const version = String(script.version || 'unknown').trim() || 'unknown';
+            const base = (namespace || name || fallbackId)
+                .replace(/\.user\.js$/i, '')
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .replace(/[^a-zA-Z0-9]+/g, '-')
+                .replace(/^-+|-+$/g, '')
+                .toLowerCase();
+            const id = base || fallbackId;
+            return { name, version, id, fileName: `${id}.json` };
+        } catch (_) {
+            return { name: fallbackName, version: 'unknown', id: fallbackId, fileName: `${fallbackId}.json` };
+        }
+    })();
+    const BACKUP_SETTINGS_KEY = 'projudi_notes_backup_settings_v1';
+    const BACKUP_SCHEMA = 'projudi-anotacoes-locais-backup-v1';
+    const DEFAULT_BACKUP_SETTINGS = {
+        enabled: false,
+        gistId: '',
+        token: '',
+        fileName: SCRIPT_META.fileName,
+        autoBackupOnSave: false
+    };
 
     const state = {
         mounted: false,
@@ -61,7 +93,8 @@
             onPageShow: null,
             onFocus: null,
             onVisibilityChange: null
-        }
+        },
+        backupTimer: null
     };
 
     function lockBodyScroll(doc = document) {
@@ -140,6 +173,131 @@
 
     function deleteNoteColorMeta(noteKey) {
         GM_deleteValue(metaStorageKey(noteKey));
+    }
+
+    function normalizeBackupSettings(value) {
+        const next = { ...DEFAULT_BACKUP_SETTINGS, ...(value || {}) };
+        next.enabled = !!next.enabled;
+        next.gistId = String(next.gistId || '').trim();
+        next.token = String(next.token || '').trim();
+        next.fileName = String(next.fileName || SCRIPT_META.fileName).trim() || SCRIPT_META.fileName;
+        next.autoBackupOnSave = !!next.autoBackupOnSave;
+        return next;
+    }
+
+    function loadBackupSettings() {
+        return normalizeBackupSettings(GM_getValue(BACKUP_SETTINGS_KEY, DEFAULT_BACKUP_SETTINGS));
+    }
+
+    function saveBackupSettings(next) {
+        const normalized = normalizeBackupSettings(next);
+        GM_setValue(BACKUP_SETTINGS_KEY, normalized);
+        return normalized;
+    }
+
+    function buildBackupPayload() {
+        return {
+            schema: BACKUP_SCHEMA,
+            scriptId: SCRIPT_META.id,
+            scriptName: SCRIPT_META.name,
+            version: SCRIPT_META.version,
+            exportedAt: new Date().toISOString(),
+            host: location.host,
+            notes: getAllNotes().map(note => ({
+                key: note.key,
+                cnj: note.cnj,
+                subkey: note.subkey,
+                html: note.html,
+                colorId: getNoteColorMeta(note.key).id
+            }))
+        };
+    }
+
+    function applyBackupPayload(payload) {
+        const notes = payload && Array.isArray(payload.notes) ? payload.notes : (Array.isArray(payload) ? payload : []);
+        let count = 0;
+        notes.forEach(item => {
+            if (!item || typeof item !== 'object') return;
+            if (!item.key || !String(item.key).startsWith(NOTE_PREFIX)) return;
+            GM_setValue(item.key, String(item.html || ''));
+            if (item.colorId) saveNoteColorMeta(item.key, String(item.colorId));
+            count++;
+        });
+        updateNoteIndicator(true);
+        return count;
+    }
+
+    function githubRequest(options) {
+        return new Promise((resolve, reject) => {
+            if (typeof GM_xmlhttpRequest !== 'function') {
+                reject(new Error('GM_xmlhttpRequest indisponivel.'));
+                return;
+            }
+            GM_xmlhttpRequest({
+                method: options.method || 'GET',
+                url: options.url,
+                headers: options.headers || {},
+                data: options.data,
+                onload: resolve,
+                onerror: () => reject(new Error('Falha de rede ao acessar o GitHub.')),
+                ontimeout: () => reject(new Error('Tempo esgotado ao acessar o GitHub.'))
+            });
+        });
+    }
+
+    function parseGithubError(response) {
+        try {
+            const parsed = JSON.parse(response.responseText || '{}');
+            if (parsed && parsed.message) return parsed.message;
+        } catch (_) {}
+        return `GitHub respondeu com status ${response.status}.`;
+    }
+
+    async function pushBackupToGist(backupSettings, payload) {
+        if (!backupSettings.gistId) throw new Error('Informe o Gist ID.');
+        if (!backupSettings.token) throw new Error('Informe o token do GitHub.');
+        const response = await githubRequest({
+            method: 'PATCH',
+            url: `https://api.github.com/gists/${encodeURIComponent(backupSettings.gistId)}`,
+            headers: {
+                Accept: 'application/vnd.github+json',
+                Authorization: `Bearer ${backupSettings.token}`,
+                'Content-Type': 'application/json'
+            },
+            data: JSON.stringify({ files: { [backupSettings.fileName]: { content: JSON.stringify(payload, null, 2) } } })
+        });
+        if (response.status < 200 || response.status >= 300) throw new Error(parseGithubError(response));
+    }
+
+    async function readBackupFromGist(backupSettings) {
+        if (!backupSettings.gistId) throw new Error('Informe o Gist ID.');
+        if (!backupSettings.token) throw new Error('Informe o token do GitHub.');
+        const response = await githubRequest({
+            method: 'GET',
+            url: `https://api.github.com/gists/${encodeURIComponent(backupSettings.gistId)}`,
+            headers: {
+                Accept: 'application/vnd.github+json',
+                Authorization: `Bearer ${backupSettings.token}`
+            }
+        });
+        if (response.status < 200 || response.status >= 300) throw new Error(parseGithubError(response));
+        const gist = JSON.parse(response.responseText || '{}');
+        const file = gist && gist.files ? gist.files[backupSettings.fileName] : null;
+        if (!file || !file.content) throw new Error('Arquivo de backup nao encontrado no Gist.');
+        return JSON.parse(file.content);
+    }
+
+    function scheduleAutoBackup() {
+        clearTimeout(state.backupTimer);
+        state.backupTimer = null;
+        const backupSettings = loadBackupSettings();
+        if (!backupSettings.enabled || !backupSettings.autoBackupOnSave) return;
+        state.backupTimer = setTimeout(async () => {
+            state.backupTimer = null;
+            try {
+                await pushBackupToGist(backupSettings, buildBackupPayload());
+            } catch (_) {}
+        }, 800);
     }
 
     function getTopContext() {
@@ -1127,6 +1285,7 @@
                 selectedColor = color;
                 applyNoteTheme(note, selectedColor);
                 saveNoteColorMeta(key, selectedColor.id);
+                scheduleAutoBackup();
                 syncColorSelection();
             });
             colorRow.appendChild(dot);
@@ -1157,6 +1316,7 @@
         editor.addEventListener('input', () => {
             GM_setValue(key, editor.innerHTML);
             updateNoteIndicator(true);
+            scheduleAutoBackup();
         });
 
         const grip = document.createElement('div');
@@ -1175,6 +1335,7 @@
             deleteNoteColorMeta(key);
             note.remove();
             updateNoteIndicator(true);
+            scheduleAutoBackup();
         });
 
         note.append(header, toolbar, editor);
@@ -1206,7 +1367,7 @@
             const text = (tmp.innerText || '').replace(/\s+/g, ' ').trim();
             const preview = text.length > 180 ? text.slice(0, 180) + '...' : text;
 
-            result.push({ key, cnj, subkey, html, preview });
+            result.push({ key, cnj, subkey, html, preview, colorId: getNoteColorMeta(key).id });
         });
 
         return result.sort((a, b) => a.cnj.localeCompare(b.cnj));
@@ -1335,6 +1496,7 @@
 
                 refreshEmptyStateAfterDelete();
                 updateNoteIndicator(true);
+                scheduleAutoBackup();
             });
 
             item.append(line1, line2, line3, deleteBtn);
@@ -1349,6 +1511,7 @@
 
         const rightBody = rootDoc.createElement('div');
         rightBody.className = 'pj-panel-right-body';
+        const backupSettings = loadBackupSettings();
 
         const info = rootDoc.createElement('div');
         info.className = 'pj-info';
@@ -1376,14 +1539,7 @@
         btnImport.innerHTML = '<i class="fa-solid fa-file-import" aria-hidden="true"></i><span>Importar notas</span>';
 
         btnExport.addEventListener('click', () => {
-            const all = getAllNotes();
-            const payload = all.map(n => ({
-                key: n.key,
-                cnj: n.cnj,
-                subkey: n.subkey,
-                html: n.html
-            }));
-            textarea.value = JSON.stringify(payload, null, 2);
+            textarea.value = JSON.stringify(buildBackupPayload().notes, null, 2);
         });
 
         btnImport.addEventListener('click', () => {
@@ -1406,22 +1562,37 @@
                 return;
             }
 
-            let count = 0;
-            parsed.forEach(item => {
-                if (!item || typeof item !== 'object') return;
-                if (!item.key || !item.html) return;
-                if (!String(item.key).startsWith(NOTE_PREFIX)) return;
-
-                GM_setValue(item.key, String(item.html));
-                count++;
-            });
+            const count = applyBackupPayload(parsed);
 
             updateNoteIndicator(true);
+            scheduleAutoBackup();
             rootWin.alert(`Importação concluída. ${count} nota(s) importada(s). Reabra o painel para ver a lista atualizada.`);
         });
 
         buttonsRow.append(btnExport, btnImport);
-        rightBody.append(info, textarea, buttonsRow);
+        const backupBox = rootDoc.createElement('div');
+        backupBox.className = 'pj-info';
+        backupBox.style.marginTop = '12px';
+        backupBox.innerHTML = `
+            <strong>Backup remoto</strong><br>
+            Um unico Gist privado pode armazenar este script em arquivo separado.
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px;">
+                <input id="pj-notes-backup-gist" type="text" placeholder="Gist ID" value="${backupSettings.gistId}">
+                <input id="pj-notes-backup-file" type="text" placeholder="projudi-anotacoes-locais.json" value="${backupSettings.fileName}">
+                <input id="pj-notes-backup-token" type="password" placeholder="ghp_..." value="${backupSettings.token}" style="grid-column:1 / -1;">
+            </div>
+            <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;">
+                <label><input id="pj-notes-backup-enabled" type="checkbox" ${backupSettings.enabled ? 'checked' : ''}> Ativar backup</label>
+                <label><input id="pj-notes-backup-auto" type="checkbox" ${backupSettings.autoBackupOnSave ? 'checked' : ''}> Backup automatico</label>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px;">
+                <button id="pj-notes-backup-send" class="pj-btn" type="button" data-variant="primary"><i class="fa-solid fa-cloud-arrow-up" aria-hidden="true"></i><span>Enviar backup</span></button>
+                <button id="pj-notes-backup-restore" class="pj-btn" type="button" data-variant="success"><i class="fa-solid fa-cloud-arrow-down" aria-hidden="true"></i><span>Restaurar</span></button>
+                <span id="pj-notes-backup-status" style="font-size:12px;color:#475569;"></span>
+            </div>
+        `;
+
+        rightBody.append(info, textarea, buttonsRow, backupBox);
         right.append(rightHeader, rightBody);
 
         body.append(left, right);
@@ -1443,6 +1614,60 @@
         function onEsc(ev) {
             if (ev.key === 'Escape') closePanel();
         }
+
+        function setBackupStatus(message, isError) {
+            const status = rootDoc.getElementById('pj-notes-backup-status');
+            if (!status) return;
+            status.textContent = message || '';
+            status.style.color = isError ? '#b42318' : '#475569';
+        }
+
+        function readBackupSettingsFromPanel() {
+            return saveBackupSettings({
+                enabled: !!rootDoc.getElementById('pj-notes-backup-enabled')?.checked,
+                autoBackupOnSave: !!rootDoc.getElementById('pj-notes-backup-auto')?.checked,
+                gistId: rootDoc.getElementById('pj-notes-backup-gist')?.value || '',
+                token: rootDoc.getElementById('pj-notes-backup-token')?.value || '',
+                fileName: rootDoc.getElementById('pj-notes-backup-file')?.value || ''
+            });
+        }
+
+        [
+            rootDoc.getElementById('pj-notes-backup-enabled'),
+            rootDoc.getElementById('pj-notes-backup-auto'),
+            rootDoc.getElementById('pj-notes-backup-gist'),
+            rootDoc.getElementById('pj-notes-backup-token'),
+            rootDoc.getElementById('pj-notes-backup-file')
+        ].forEach(el => {
+            if (!el) return;
+            const eventName = el.type === 'checkbox' ? 'change' : 'input';
+            el.addEventListener(eventName, () => {
+                readBackupSettingsFromPanel();
+            });
+        });
+
+        rootDoc.getElementById('pj-notes-backup-send').addEventListener('click', async () => {
+            try {
+                const nextSettings = readBackupSettingsFromPanel();
+                setBackupStatus('Enviando backup...');
+                await pushBackupToGist(nextSettings, buildBackupPayload());
+                setBackupStatus('Backup enviado.');
+            } catch (error) {
+                setBackupStatus(error && error.message ? error.message : 'Falha ao enviar backup.', true);
+            }
+        });
+
+        rootDoc.getElementById('pj-notes-backup-restore').addEventListener('click', async () => {
+            try {
+                const nextSettings = readBackupSettingsFromPanel();
+                setBackupStatus('Restaurando backup...');
+                const payload = await readBackupFromGist(nextSettings);
+                const count = applyBackupPayload(payload);
+                setBackupStatus(`Backup restaurado: ${count} nota(s).`);
+            } catch (error) {
+                setBackupStatus(error && error.message ? error.message : 'Falha ao restaurar backup.', true);
+            }
+        });
 
         closeBtn.addEventListener('click', closePanel);
 
