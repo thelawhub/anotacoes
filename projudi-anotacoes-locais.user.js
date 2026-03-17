@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anotações Locais
 // @namespace    projudi-anotacoes-locais.user.js
-// @version      2.9
+// @version      3.0
 // @icon         https://img.icons8.com/ios-filled/100/scales--v1.png
 // @description  Adiciona Post-it local ao Projudi, com painel de notas, importação e exportação.
 // @author       lourencosv (GPT)
@@ -68,7 +68,8 @@
         gistId: '',
         token: '',
         fileName: SCRIPT_META.fileName,
-        autoBackupOnSave: false
+        autoBackupOnSave: false,
+        lastBackupAt: ''
     };
 
     const state = {
@@ -182,7 +183,15 @@
         next.token = String(next.token || '').trim();
         next.fileName = String(next.fileName || SCRIPT_META.fileName).trim() || SCRIPT_META.fileName;
         next.autoBackupOnSave = !!next.autoBackupOnSave;
+        next.lastBackupAt = String(next.lastBackupAt || '').trim();
         return next;
+    }
+
+    function formatLastBackupLabel(value) {
+        if (!value) return 'Último backup: ainda não enviado.';
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return 'Último backup: ainda não enviado.';
+        return `Último backup: ${date.toLocaleString('pt-BR')}.`;
     }
 
     function loadBackupSettings() {
@@ -296,6 +305,7 @@
             state.backupTimer = null;
             try {
                 await pushBackupToGist(backupSettings, buildBackupPayload());
+                saveBackupSettings({ ...backupSettings, lastBackupAt: new Date().toISOString() });
             } catch (_) {}
         }, 800);
     }
@@ -1638,6 +1648,7 @@
                 <button id="pj-notes-backup-clear" class="pj-btn" type="button" data-variant="secondary"><i class="fa-solid fa-eraser" aria-hidden="true"></i><span>Limpar backup</span></button>
                 <span id="pj-notes-backup-status" class="pj-backup-status"></span>
             </div>
+            <div id="pj-notes-backup-last" class="pj-backup-status">${formatLastBackupLabel(backupSettings.lastBackupAt)}</div>
         `;
 
         rightBody.append(info, textarea, buttonsRow, backupBox);
@@ -1670,6 +1681,12 @@
             status.style.color = isError ? '#b42318' : '#475569';
         }
 
+        function updateBackupLast(nextSettings) {
+            const status = rootDoc.getElementById('pj-notes-backup-last');
+            if (!status) return;
+            status.textContent = formatLastBackupLabel((nextSettings || backupSettings).lastBackupAt);
+        }
+
         function readBackupSettingsFromPanel() {
             return saveBackupSettings({
                 enabled: !!rootDoc.getElementById('pj-notes-backup-enabled')?.checked,
@@ -1696,9 +1713,12 @@
 
         rootDoc.getElementById('pj-notes-backup-send').addEventListener('click', async () => {
             try {
-                const nextSettings = readBackupSettingsFromPanel();
+                let nextSettings = readBackupSettingsFromPanel();
                 setBackupStatus('Enviando backup...');
                 await pushBackupToGist(nextSettings, buildBackupPayload());
+                nextSettings = saveBackupSettings({ ...nextSettings, lastBackupAt: new Date().toISOString() });
+                backupSettings = nextSettings;
+                updateBackupLast(nextSettings);
                 setBackupStatus('Backup enviado.');
             } catch (error) {
                 setBackupStatus(error && error.message ? error.message : 'Falha ao enviar backup.', true);
@@ -1724,8 +1744,10 @@
             rootDoc.getElementById('pj-notes-backup-gist').value = nextSettings.gistId;
             rootDoc.getElementById('pj-notes-backup-token').value = nextSettings.token;
             rootDoc.getElementById('pj-notes-backup-file').value = nextSettings.fileName;
+            updateBackupLast(nextSettings);
             setBackupStatus('Configuração de backup removida.');
         });
+        updateBackupLast(backupSettings);
 
         closeBtn.addEventListener('click', closePanel);
 
