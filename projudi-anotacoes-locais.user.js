@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anotações Locais
 // @namespace    projudi-anotacoes-locais.user.js
-// @version      3.0
+// @version      3.1
 // @icon         https://img.icons8.com/ios-filled/100/scales--v1.png
 // @description  Adiciona Post-it local ao Projudi, com painel de notas, importação e exportação.
 // @author       lourencosv (GPT)
@@ -1568,7 +1568,7 @@
 
         const rightBody = rootDoc.createElement('div');
         rightBody.className = 'pj-panel-right-body';
-        const backupSettings = loadBackupSettings();
+        let backupSettings = loadBackupSettings();
 
         const info = rootDoc.createElement('div');
         info.className = 'pj-info';
@@ -1674,79 +1674,105 @@
             if (ev.key === 'Escape') closePanel();
         }
 
+        const backupEnabledInput = rootDoc.getElementById('pj-notes-backup-enabled');
+        const backupAutoInput = rootDoc.getElementById('pj-notes-backup-auto');
+        const backupGistInput = rootDoc.getElementById('pj-notes-backup-gist');
+        const backupTokenInput = rootDoc.getElementById('pj-notes-backup-token');
+        const backupFileInput = rootDoc.getElementById('pj-notes-backup-file');
+        const backupSendBtn = rootDoc.getElementById('pj-notes-backup-send');
+        const backupRestoreBtn = rootDoc.getElementById('pj-notes-backup-restore');
+        const backupClearBtn = rootDoc.getElementById('pj-notes-backup-clear');
+        const backupStatusEl = rootDoc.getElementById('pj-notes-backup-status');
+        const backupLastEl = rootDoc.getElementById('pj-notes-backup-last');
+        const hasBackupUi = [
+            backupEnabledInput,
+            backupAutoInput,
+            backupGistInput,
+            backupTokenInput,
+            backupFileInput,
+            backupSendBtn,
+            backupRestoreBtn,
+            backupClearBtn,
+            backupStatusEl,
+            backupLastEl
+        ].every(Boolean);
+
         function setBackupStatus(message, isError) {
-            const status = rootDoc.getElementById('pj-notes-backup-status');
-            if (!status) return;
+            const status = backupStatusEl;
+            if (!hasBackupUi || !status) return;
             status.textContent = message || '';
             status.style.color = isError ? '#b42318' : '#475569';
         }
 
         function updateBackupLast(nextSettings) {
-            const status = rootDoc.getElementById('pj-notes-backup-last');
-            if (!status) return;
+            const status = backupLastEl;
+            if (!hasBackupUi || !status) return;
             status.textContent = formatLastBackupLabel((nextSettings || backupSettings).lastBackupAt);
         }
 
         function readBackupSettingsFromPanel() {
+            if (!hasBackupUi) return backupSettings;
             return saveBackupSettings({
-                enabled: !!rootDoc.getElementById('pj-notes-backup-enabled')?.checked,
-                autoBackupOnSave: !!rootDoc.getElementById('pj-notes-backup-auto')?.checked,
-                gistId: rootDoc.getElementById('pj-notes-backup-gist')?.value || '',
-                token: rootDoc.getElementById('pj-notes-backup-token')?.value || '',
-                fileName: rootDoc.getElementById('pj-notes-backup-file')?.value || ''
+                enabled: !!backupEnabledInput?.checked,
+                autoBackupOnSave: !!backupAutoInput?.checked,
+                gistId: backupGistInput?.value || '',
+                token: backupTokenInput?.value || '',
+                fileName: backupFileInput?.value || ''
             });
         }
 
-        [
-            rootDoc.getElementById('pj-notes-backup-enabled'),
-            rootDoc.getElementById('pj-notes-backup-auto'),
-            rootDoc.getElementById('pj-notes-backup-gist'),
-            rootDoc.getElementById('pj-notes-backup-token'),
-            rootDoc.getElementById('pj-notes-backup-file')
-        ].forEach(el => {
-            if (!el) return;
-            const eventName = el.type === 'checkbox' ? 'change' : 'input';
-            el.addEventListener(eventName, () => {
-                readBackupSettingsFromPanel();
+        if (hasBackupUi) {
+            [
+                backupEnabledInput,
+                backupAutoInput,
+                backupGistInput,
+                backupTokenInput,
+                backupFileInput
+            ].forEach(el => {
+                const eventName = el.type === 'checkbox' ? 'change' : 'input';
+                el.addEventListener(eventName, () => {
+                    readBackupSettingsFromPanel();
+                });
             });
-        });
 
-        rootDoc.getElementById('pj-notes-backup-send').addEventListener('click', async () => {
-            try {
-                let nextSettings = readBackupSettingsFromPanel();
-                setBackupStatus('Enviando backup...');
-                await pushBackupToGist(nextSettings, buildBackupPayload());
-                nextSettings = saveBackupSettings({ ...nextSettings, lastBackupAt: new Date().toISOString() });
+            backupSendBtn.addEventListener('click', async () => {
+                try {
+                    let nextSettings = readBackupSettingsFromPanel();
+                    setBackupStatus('Enviando backup...');
+                    await pushBackupToGist(nextSettings, buildBackupPayload());
+                    nextSettings = saveBackupSettings({ ...nextSettings, lastBackupAt: new Date().toISOString() });
+                    backupSettings = nextSettings;
+                    updateBackupLast(nextSettings);
+                    setBackupStatus('Backup enviado.');
+                } catch (error) {
+                    setBackupStatus(error && error.message ? error.message : 'Falha ao enviar backup.', true);
+                }
+            });
+
+            backupRestoreBtn.addEventListener('click', async () => {
+                try {
+                    const nextSettings = readBackupSettingsFromPanel();
+                    setBackupStatus('Restaurando backup...');
+                    const payload = await readBackupFromGist(nextSettings);
+                    const count = applyBackupPayload(payload);
+                    setBackupStatus(`Backup restaurado: ${count} nota(s).`);
+                } catch (error) {
+                    setBackupStatus(error && error.message ? error.message : 'Falha ao restaurar backup.', true);
+                }
+            });
+
+            backupClearBtn.addEventListener('click', () => {
+                const nextSettings = saveBackupSettings(DEFAULT_BACKUP_SETTINGS);
                 backupSettings = nextSettings;
+                backupEnabledInput.checked = nextSettings.enabled;
+                backupAutoInput.checked = nextSettings.autoBackupOnSave;
+                backupGistInput.value = nextSettings.gistId;
+                backupTokenInput.value = nextSettings.token;
+                backupFileInput.value = nextSettings.fileName;
                 updateBackupLast(nextSettings);
-                setBackupStatus('Backup enviado.');
-            } catch (error) {
-                setBackupStatus(error && error.message ? error.message : 'Falha ao enviar backup.', true);
-            }
-        });
-
-        rootDoc.getElementById('pj-notes-backup-restore').addEventListener('click', async () => {
-            try {
-                const nextSettings = readBackupSettingsFromPanel();
-                setBackupStatus('Restaurando backup...');
-                const payload = await readBackupFromGist(nextSettings);
-                const count = applyBackupPayload(payload);
-                setBackupStatus(`Backup restaurado: ${count} nota(s).`);
-            } catch (error) {
-                setBackupStatus(error && error.message ? error.message : 'Falha ao restaurar backup.', true);
-            }
-        });
-
-        rootDoc.getElementById('pj-notes-backup-clear').addEventListener('click', () => {
-            const nextSettings = saveBackupSettings(DEFAULT_BACKUP_SETTINGS);
-            rootDoc.getElementById('pj-notes-backup-enabled').checked = nextSettings.enabled;
-            rootDoc.getElementById('pj-notes-backup-auto').checked = nextSettings.autoBackupOnSave;
-            rootDoc.getElementById('pj-notes-backup-gist').value = nextSettings.gistId;
-            rootDoc.getElementById('pj-notes-backup-token').value = nextSettings.token;
-            rootDoc.getElementById('pj-notes-backup-file').value = nextSettings.fileName;
-            updateBackupLast(nextSettings);
-            setBackupStatus('Configuração de backup removida.');
-        });
+                setBackupStatus('Configuração de backup removida.');
+            });
+        }
         updateBackupLast(backupSettings);
 
         closeBtn.addEventListener('click', closePanel);
