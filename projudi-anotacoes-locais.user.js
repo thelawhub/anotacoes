@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anotações Locais
 // @namespace    projudi-anotacoes-locais.user.js
-// @version      2.8
+// @version      2.9
 // @icon         https://img.icons8.com/ios-filled/100/scales--v1.png
 // @description  Adiciona Post-it local ao Projudi, com painel de notas, importação e exportação.
 // @author       lourencosv (GPT)
@@ -1635,6 +1635,7 @@
             <div class="pj-backup-actions">
                 <button id="pj-notes-backup-send" class="pj-btn" type="button" data-variant="primary"><i class="fa-solid fa-cloud-arrow-up" aria-hidden="true"></i><span>Enviar backup</span></button>
                 <button id="pj-notes-backup-restore" class="pj-btn" type="button" data-variant="success"><i class="fa-solid fa-cloud-arrow-down" aria-hidden="true"></i><span>Restaurar backup</span></button>
+                <button id="pj-notes-backup-clear" class="pj-btn" type="button" data-variant="secondary"><i class="fa-solid fa-eraser" aria-hidden="true"></i><span>Limpar backup</span></button>
                 <span id="pj-notes-backup-status" class="pj-backup-status"></span>
             </div>
         `;
@@ -1714,6 +1715,16 @@
             } catch (error) {
                 setBackupStatus(error && error.message ? error.message : 'Falha ao restaurar backup.', true);
             }
+        });
+
+        rootDoc.getElementById('pj-notes-backup-clear').addEventListener('click', () => {
+            const nextSettings = saveBackupSettings(DEFAULT_BACKUP_SETTINGS);
+            rootDoc.getElementById('pj-notes-backup-enabled').checked = nextSettings.enabled;
+            rootDoc.getElementById('pj-notes-backup-auto').checked = nextSettings.autoBackupOnSave;
+            rootDoc.getElementById('pj-notes-backup-gist').value = nextSettings.gistId;
+            rootDoc.getElementById('pj-notes-backup-token').value = nextSettings.token;
+            rootDoc.getElementById('pj-notes-backup-file').value = nextSettings.fileName;
+            setBackupStatus('Configuração de backup removida.');
         });
 
         closeBtn.addEventListener('click', closePanel);
