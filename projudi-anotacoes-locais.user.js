@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anotações Locais
 // @namespace    projudi-anotacoes-locais.user.js
-// @version      3.1
+// @version      3.3
 // @icon         https://img.icons8.com/ios-filled/100/scales--v1.png
 // @description  Adiciona Post-it local ao Projudi, com painel de notas, importação e exportação.
 // @author       lourencosv (GPT)
@@ -69,7 +69,8 @@
         token: '',
         fileName: SCRIPT_META.fileName,
         autoBackupOnSave: false,
-        lastBackupAt: ''
+        lastBackupAt: '',
+        lastBackupSignature: ''
     };
 
     const state = {
@@ -184,6 +185,7 @@
         next.fileName = String(next.fileName || SCRIPT_META.fileName).trim() || SCRIPT_META.fileName;
         next.autoBackupOnSave = !!next.autoBackupOnSave;
         next.lastBackupAt = String(next.lastBackupAt || '').trim();
+        next.lastBackupSignature = String(next.lastBackupSignature || '').trim();
         return next;
     }
 
@@ -220,6 +222,19 @@
                 colorId: getNoteColorMeta(note.key).id
             }))
         };
+    }
+
+    function buildBackupSignature() {
+        const notes = getAllNotes()
+            .map(note => ({
+                key: note.key,
+                cnj: note.cnj,
+                subkey: note.subkey,
+                html: note.html,
+                colorId: getNoteColorMeta(note.key).id
+            }))
+            .sort((a, b) => String(a.key).localeCompare(String(b.key), 'pt-BR'));
+        return JSON.stringify({ schema: BACKUP_SCHEMA, notes });
     }
 
     function applyBackupPayload(payload) {
@@ -301,11 +316,13 @@
         state.backupTimer = null;
         const backupSettings = loadBackupSettings();
         if (!backupSettings.enabled || !backupSettings.autoBackupOnSave) return;
+        const backupSignature = buildBackupSignature();
+        if (backupSignature === backupSettings.lastBackupSignature) return;
         state.backupTimer = setTimeout(async () => {
             state.backupTimer = null;
             try {
                 await pushBackupToGist(backupSettings, buildBackupPayload());
-                saveBackupSettings({ ...backupSettings, lastBackupAt: new Date().toISOString() });
+                saveBackupSettings({ ...backupSettings, lastBackupAt: new Date().toISOString(), lastBackupSignature: backupSignature });
             } catch (_) {}
         }, 800);
     }
@@ -1738,9 +1755,10 @@
             backupSendBtn.addEventListener('click', async () => {
                 try {
                     let nextSettings = readBackupSettingsFromPanel();
+                    const backupSignature = buildBackupSignature();
                     setBackupStatus('Enviando backup...');
                     await pushBackupToGist(nextSettings, buildBackupPayload());
-                    nextSettings = saveBackupSettings({ ...nextSettings, lastBackupAt: new Date().toISOString() });
+                    nextSettings = saveBackupSettings({ ...nextSettings, lastBackupAt: new Date().toISOString(), lastBackupSignature: backupSignature });
                     backupSettings = nextSettings;
                     updateBackupLast(nextSettings);
                     setBackupStatus('Backup enviado.');
@@ -1751,10 +1769,12 @@
 
             backupRestoreBtn.addEventListener('click', async () => {
                 try {
-                    const nextSettings = readBackupSettingsFromPanel();
+                    let nextSettings = readBackupSettingsFromPanel();
                     setBackupStatus('Restaurando backup...');
                     const payload = await readBackupFromGist(nextSettings);
                     const count = applyBackupPayload(payload);
+                    nextSettings = saveBackupSettings({ ...nextSettings, lastBackupSignature: buildBackupSignature() });
+                    backupSettings = nextSettings;
                     setBackupStatus(`Backup restaurado: ${count} nota(s).`);
                 } catch (error) {
                     setBackupStatus(error && error.message ? error.message : 'Falha ao restaurar backup.', true);
