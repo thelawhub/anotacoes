@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Anotações Locais
+// @name         Anotações
 // @namespace    projudi-anotacoes-locais.user.js
-// @version      3.3
+// @version      3.4
 // @icon         https://img.icons8.com/ios-filled/100/scales--v1.png
 // @description  Adiciona Post-it local ao Projudi, com painel de notas, importação e exportação.
 // @author       lourencosv (GPT)
@@ -63,6 +63,14 @@
     })();
     const BACKUP_SETTINGS_KEY = 'projudi_notes_backup_settings_v1';
     const BACKUP_SCHEMA = 'projudi-anotacoes-locais-backup-v1';
+    const LOG_PREFIX = '[Anotações Locais]';
+    const PROCESS_CONTEXT_SELECTOR = [
+        '#span_proc_numero',
+        'button.notaProcesso',
+        'button[onclick*="criarNota"]',
+        'a.notaProcesso',
+        'a[onclick*="criarNota"]'
+    ].join(', ');
     const DEFAULT_BACKUP_SETTINGS = {
         enabled: false,
         gistId: '',
@@ -86,6 +94,10 @@
             signature: null,
             hasText: false
         },
+        notesListCache: {
+            signature: null,
+            notes: []
+        },
         indicatorCache: {
             signature: null,
             hasNote: null
@@ -98,6 +110,38 @@
         },
         backupTimer: null
     };
+
+    function logInfo(message, meta) {
+        if (typeof console === 'undefined' || typeof console.info !== 'function') return;
+        if (meta === undefined) {
+            console.info(`${LOG_PREFIX} ${message}`);
+            return;
+        }
+        console.info(`${LOG_PREFIX} ${message}`, meta);
+    }
+
+    function logWarn(message, meta) {
+        if (typeof console === 'undefined' || typeof console.warn !== 'function') return;
+        if (meta === undefined) {
+            console.warn(`${LOG_PREFIX} ${message}`);
+            return;
+        }
+        console.warn(`${LOG_PREFIX} ${message}`, meta);
+    }
+
+    function logError(message, error) {
+        if (typeof console === 'undefined' || typeof console.error !== 'function') return;
+        console.error(`${LOG_PREFIX} ${message}`, error);
+    }
+
+    function safeRun(label, task, fallbackValue) {
+        try {
+            return task();
+        } catch (error) {
+            logError(label, error);
+            return fallbackValue;
+        }
+    }
 
     function lockBodyScroll(doc = document) {
         const body = doc && doc.body;
@@ -121,14 +165,18 @@
 
     function isProcessPage(doc) {
         if (!doc || !doc.body) return false;
+        const processNumber = doc.getElementById('span_proc_numero');
+        if (processNumber && CNJ_REGEX.test(processNumber.textContent || '')) return true;
         const text = doc.body.innerText || '';
         return CNJ_REGEX.test(text);
     }
 
     function getProcessContext() {
         if (!document.body) return null;
-        const text = document.body.innerText || '';
-        const match = text.match(CNJ_REGEX);
+        const processNumberEl = document.getElementById('span_proc_numero');
+        const directText = processNumberEl ? String(processNumberEl.textContent || '').trim() : '';
+        const directMatch = directText.match(CNJ_REGEX);
+        const match = directMatch || (document.body.innerText || '').match(CNJ_REGEX);
         if (!match) return null;
 
         const cnj = match[0];
@@ -197,12 +245,16 @@
     }
 
     function loadBackupSettings() {
-        return normalizeBackupSettings(GM_getValue(BACKUP_SETTINGS_KEY, DEFAULT_BACKUP_SETTINGS));
+        return safeRun(
+            'Falha ao carregar configuração de backup; usando padrão.',
+            () => normalizeBackupSettings(GM_getValue(BACKUP_SETTINGS_KEY, DEFAULT_BACKUP_SETTINGS)),
+            normalizeBackupSettings(DEFAULT_BACKUP_SETTINGS)
+        );
     }
 
     function saveBackupSettings(next) {
         const normalized = normalizeBackupSettings(next);
-        GM_setValue(BACKUP_SETTINGS_KEY, normalized);
+        safeRun('Falha ao salvar configuração de backup.', () => GM_setValue(BACKUP_SETTINGS_KEY, normalized));
         return normalized;
     }
 
@@ -247,6 +299,7 @@
             if (item.colorId) saveNoteColorMeta(item.key, String(item.colorId));
             count++;
         });
+        invalidateNotesCaches();
         updateNoteIndicator(true);
         return count;
     }
@@ -323,7 +376,9 @@
             try {
                 await pushBackupToGist(backupSettings, buildBackupPayload());
                 saveBackupSettings({ ...backupSettings, lastBackupAt: new Date().toISOString(), lastBackupSignature: backupSignature });
-            } catch (_) {}
+            } catch (error) {
+                logWarn('Falha no backup automático.', error);
+            }
         }, 800);
     }
 
@@ -367,6 +422,13 @@
         state.noteHtmlCheckCache.signature = signature;
         state.noteHtmlCheckCache.hasText = hasText;
         return hasText;
+    }
+
+    function invalidateNotesCaches() {
+        state.notesListCache.signature = null;
+        state.notesListCache.notes = [];
+        state.indicatorCache.signature = null;
+        state.indicatorCache.hasNote = null;
     }
 
     function resolveNoteForCurrentPage(ctxOverride) {
@@ -418,8 +480,32 @@
         state.scheduled = true;
         state.timer = setTimeout(() => {
             state.scheduled = false;
-            evaluate();
+            safeRun('Falha ao reavaliar contexto da página.', () => evaluate());
         }, delay);
+    }
+
+    function isMutationInsideUi(node) {
+        if (!node || node.nodeType !== 1) return false;
+        if (node.matches?.('#pj-note, #pj-notes-panel, #pj-add-btn')) return true;
+        if (node.closest?.('#pj-note, #pj-notes-panel, #pj-add-btn')) return true;
+        return false;
+    }
+
+    function isRelevantMutationNode(node) {
+        if (!node || node.nodeType !== 1) return false;
+        if (isMutationInsideUi(node)) return false;
+        if (node.matches?.(PROCESS_CONTEXT_SELECTOR)) return true;
+        if (node.querySelector?.(PROCESS_CONTEXT_SELECTOR)) return true;
+        return false;
+    }
+
+    function hasRelevantPageMutation(mutations) {
+        return mutations.some(mutation => {
+            return [mutation.target, ...mutation.addedNodes, ...mutation.removedNodes].some(node => {
+                if (!node || node.nodeType !== 1) return false;
+                return isRelevantMutationNode(node);
+            });
+        });
     }
 
     function evaluate() {
@@ -468,18 +554,12 @@
 
     state.observer = new MutationObserver(mutations => {
         if (document.hidden) return;
-
-        const isOwnUiMutation = mutations.every(m => {
-            const t = m.target;
-            return t && t.nodeType === 1 && typeof t.closest === 'function' &&
-                t.closest('#pj-note, #pj-notes-panel, #pj-add-btn');
-        });
-        if (isOwnUiMutation) return;
+        if (!hasRelevantPageMutation(mutations)) return;
 
         scheduleEvaluate(250);
     });
 
-    state.observer.observe(document.documentElement, {
+    state.observer.observe(document.body || document.documentElement, {
         childList: true,
         subtree: true
     });
@@ -1359,6 +1439,7 @@
                 selectedColor = color;
                 applyNoteTheme(note, selectedColor);
                 saveNoteColorMeta(key, selectedColor.id);
+                invalidateNotesCaches();
                 scheduleAutoBackup();
                 syncColorSelection();
             });
@@ -1389,6 +1470,7 @@
 
         editor.addEventListener('input', () => {
             GM_setValue(key, editor.innerHTML);
+            invalidateNotesCaches();
             updateNoteIndicator(true);
             scheduleAutoBackup();
         });
@@ -1407,6 +1489,7 @@
             if (!window.confirm('Excluir esta nota?')) return;
             GM_deleteValue(key);
             deleteNoteColorMeta(key);
+            invalidateNotesCaches();
             note.remove();
             updateNoteIndicator(true);
             scheduleAutoBackup();
@@ -1418,7 +1501,12 @@
 
     function getAllNotes() {
         const keys = typeof GM_listValues === 'function' ? GM_listValues() : [];
+        const signature = keys.filter(key => key.startsWith(NOTE_PREFIX)).sort().join('|');
+        if (state.notesListCache.signature === signature) {
+            return state.notesListCache.notes.map(note => ({ ...note }));
+        }
         const result = [];
+        const tmp = getScratchHtmlEl();
 
         keys.forEach(key => {
             if (!key.startsWith(NOTE_PREFIX)) return;
@@ -1436,15 +1524,18 @@
                 return;
             }
 
-            const tmp = document.createElement('div');
             tmp.innerHTML = html;
             const text = (tmp.innerText || '').replace(/\s+/g, ' ').trim();
             const preview = text.length > 180 ? text.slice(0, 180) + '...' : text;
+            tmp.innerHTML = '';
 
             result.push({ key, cnj, subkey, html, preview, colorId: getNoteColorMeta(key).id });
         });
 
-        return result.sort((a, b) => a.cnj.localeCompare(b.cnj));
+        result.sort((a, b) => a.cnj.localeCompare(b.cnj));
+        state.notesListCache.signature = signature;
+        state.notesListCache.notes = result.map(note => ({ ...note }));
+        return result;
     }
 
     function openNotesPanel() {
@@ -1561,6 +1652,7 @@
 
                 GM_deleteValue(n.key);
                 deleteNoteColorMeta(n.key);
+                invalidateNotesCaches();
                 item.remove();
 
                 if (selectedKey === n.key) {
