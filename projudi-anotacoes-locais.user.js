@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anotações
 // @namespace    projudi-anotacoes-locais.user.js
-// @version      3.5
+// @version      3.6
 // @icon         https://img.icons8.com/ios-filled/100/scales--v1.png
 // @description  Adiciona Post-it local ao Projudi, com painel de notas, importação e exportação.
 // @author       lourencosv (GPT)
@@ -879,7 +879,9 @@
                 display: flex;
                 flex: 1;
                 min-height: 320px;
-                background: var(--pj-color-surface-soft);
+                gap: 14px;
+                padding: 14px;
+                background: linear-gradient(180deg, #f8fbff 0%, #f2f6fc 100%);
             }
 
             #pj-notes-panel .pj-panel-left,
@@ -887,11 +889,15 @@
                 display: flex;
                 flex-direction: column;
                 min-height: 0;
+                border: 1px solid #dbe3ef;
+                border-radius: 12px;
+                background: #ffffff;
+                box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
+                overflow: hidden;
             }
 
             #pj-notes-panel .pj-panel-left {
                 flex: 3;
-                border-right: 1px solid #dbe3ef;
             }
 
             #pj-notes-panel .pj-panel-right {
@@ -899,11 +905,14 @@
             }
 
             #pj-notes-panel .pj-section-title {
-                padding: 10px 12px;
+                padding: 12px 14px;
                 border-bottom: 1px solid #dbe3ef;
-                font-weight: 600;
-                background: #f8fafc;
-                font-size: 14px;
+                font-weight: 700;
+                background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+                font-size: 12px;
+                color: #334155;
+                letter-spacing: .03em;
+                text-transform: uppercase;
                 line-height: 1.35;
             }
 
@@ -919,16 +928,18 @@
 
             #pj-notes-panel .pj-note-item {
                 border: 1px solid #dbe3ef;
-                border-radius: 10px;
+                border-radius: 12px;
                 background: #ffffff;
                 padding: 12px;
                 cursor: pointer;
                 position: relative;
+                box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
             }
 
             #pj-notes-panel .pj-note-item[data-selected='1'] {
                 background: #eff6ff;
                 border-color: #bfdbfe;
+                box-shadow: 0 0 0 1px rgba(59, 130, 246, .08);
             }
 
             #pj-notes-panel .pj-note-line1 {
@@ -969,14 +980,14 @@
             }
 
             #pj-notes-panel .pj-preview-title {
-                padding: 7px 8px 0;
+                padding: 8px 10px 0;
                 font-size: 12px;
                 color: var(--pj-color-text-muted);
             }
 
             #pj-notes-panel .pj-preview-box {
                 margin: 4px 8px 8px;
-                border-radius: var(--pj-radius-md);
+                border-radius: 12px;
                 background: #ffffff;
                 border: 1px solid #dbe3ef;
                 padding: 12px;
@@ -986,13 +997,14 @@
                 font-size: 14px;
                 line-height: 1.35;
                 color: #334155;
+                box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
             }
 
             #pj-notes-panel .pj-panel-right-body {
-                padding: 12px;
+                padding: 14px;
                 display: flex;
                 flex-direction: column;
-                gap: 12px;
+                gap: 14px;
                 flex: 1;
                 min-height: 0;
                 overflow-y: auto;
@@ -1003,9 +1015,10 @@
                 color: #475569;
                 line-height: 1.35;
                 border: 1px solid #dbe3ef;
-                border-radius: var(--pj-radius-md);
+                border-radius: 12px;
                 background: #ffffff;
                 padding: 12px;
+                box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
             }
 
             #pj-notes-panel #pj-notes-io {
@@ -1051,6 +1064,17 @@
                 gap: 14px;
                 flex-wrap: wrap;
                 margin-top: 10px;
+            }
+
+            #pj-notes-panel .pj-backup-toggles label {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                padding: 8px 10px;
+                border: 1px solid #dbe3ef;
+                border-radius: 999px;
+                background: #f8fbff;
+                color: #334155;
             }
 
             #pj-notes-panel .pj-backup-actions {
@@ -1101,11 +1125,11 @@
             @media (max-width: 860px) {
                 #pj-notes-panel .pj-panel-body {
                     flex-direction: column;
+                    padding: 12px;
+                    gap: 12px;
                 }
 
                 #pj-notes-panel .pj-panel-left {
-                    border-right: 0;
-                    border-bottom: 1px solid #dbe3ef;
                     min-height: 230px;
                 }
 
