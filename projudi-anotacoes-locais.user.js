@@ -1,13 +1,13 @@
 // ==UserScript==
 // @name         Anotações
 // @namespace    projudi-anotacoes-locais.user.js
-// @version      3.6
+// @version      3.7
 // @icon         https://img.icons8.com/ios-filled/100/scales--v1.png
 // @description  Adiciona Post-it local ao Projudi, com painel de notas, importação e exportação.
 // @author       lourencosv (GPT)
 // @license      CC BY-NC 4.0
-// @updateURL    https://gist.githubusercontent.com/lourencosv/3fd541d959eb6e4cd0f96e30dda5c4d7/raw/projudi-anotacoes-locais.user.js
-// @downloadURL  https://gist.githubusercontent.com/lourencosv/3fd541d959eb6e4cd0f96e30dda5c4d7/raw/projudi-anotacoes-locais.user.js
+// @updateURL    https://raw.githubusercontent.com/thelawhub/anotacoes/refs/heads/main/projudi-anotacoes-locais.user.js
+// @downloadURL  https://raw.githubusercontent.com/thelawhub/anotacoes/refs/heads/main/projudi-anotacoes-locais.user.js
 // @match        *://projudi.tjgo.jus.br/*
 // @run-at       document-end
 // @grant        GM_getValue
@@ -1158,24 +1158,20 @@
     function ensureMenuRegistered(force = false) {
         if (typeof GM_registerMenuCommand !== 'function') return;
 
-        if (force) {
-            try {
-                if (state.menuRegistered && state.menuCommandId !== null && typeof GM_unregisterMenuCommand === 'function') {
-                    GM_unregisterMenuCommand(state.menuCommandId);
-                }
-            } catch (_) {}
-            state.menuCommandId = null;
-            state.menuRegistered = false;
-        }
-
-        if (state.menuRegistered) return;
+        if (state.menuRegistered && !force) return;
 
         try {
+            const previousId = state.menuCommandId;
             const id = GM_registerMenuCommand('Gerenciar Anotações', () => {
                 openNotesPanel();
             });
-            state.menuCommandId = id == null ? null : id;
+            if (id != null) state.menuCommandId = id;
             state.menuRegistered = true;
+            if (force && id != null && previousId !== null && previousId !== state.menuCommandId && typeof GM_unregisterMenuCommand === 'function') {
+                try {
+                    GM_unregisterMenuCommand(previousId);
+                } catch (_) {}
+            }
         } catch (_) {}
     }
 
