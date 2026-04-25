@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anotações
 // @namespace    projudi-anotacoes-locais.user.js
-// @version      4.0
+// @version      4.1
 // @icon         https://img.icons8.com/ios-filled/100/scales--v1.png
 // @description  Adiciona Post-it local ao Projudi, com painel de notas, importação e exportação.
 // @author       lourencosv (GPT)
@@ -955,10 +955,6 @@
                 display: grid;
                 gap: 8px;
                 max-height: none;
-            }
-
-            #pj-notes-panel .pj-panel-right .pj-card {
-                min-height: 100%;
             }
 
             #pj-notes-panel .pj-note-item {
