@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anotações
 // @namespace    projudi-anotacoes-locais.user.js
-// @version      3.8
+// @version      3.9
 // @icon         https://img.icons8.com/ios-filled/100/scales--v1.png
 // @description  Adiciona Post-it local ao Projudi, com painel de notas, importação e exportação.
 // @author       lourencosv (GPT)
@@ -878,7 +878,7 @@
 
             #pj-notes-panel .pj-panel-body {
                 display: grid;
-                grid-template-columns: 330px minmax(0, 1fr);
+                grid-template-columns: minmax(300px, 420px) minmax(0, 1fr);
                 grid-template-areas: "rail workspace";
                 flex: 1 1 auto;
                 min-height: 0;
@@ -954,6 +954,7 @@
             #pj-notes-panel .pj-note-list {
                 display: grid;
                 gap: 8px;
+                max-height: none;
             }
 
             #pj-notes-panel .pj-note-item {
@@ -1028,6 +1029,22 @@
                 box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
             }
 
+            #pj-notes-panel .pj-note-inline-preview {
+                display: none;
+                margin-top: 10px;
+                border-top: 1px solid #dbe3ef;
+                padding-top: 10px;
+                color: #334155;
+                font-size: 13px;
+                line-height: 1.4;
+                max-height: 260px;
+                overflow: auto;
+            }
+
+            #pj-notes-panel .pj-note-item[data-selected='1'] .pj-note-inline-preview {
+                display: block;
+            }
+
             #pj-notes-panel .pj-panel-right-body {
                 display: grid;
                 gap: 12px;
@@ -1047,6 +1064,7 @@
             }
 
             #pj-notes-panel #pj-notes-io {
+                display: none;
                 min-height: 180px;
                 max-height: 320px;
                 width: 100%;
@@ -1063,7 +1081,7 @@
 
             #pj-notes-panel .pj-row-btns {
                 display: grid;
-                grid-template-columns: repeat(3, minmax(0, 1fr));
+                grid-template-columns: repeat(2, minmax(0, 1fr));
                 gap: 8px;
             }
 
@@ -1097,17 +1115,17 @@
             }
 
             #pj-notes-panel .pj-backup-actions {
-                display: flex;
+                display: grid;
+                grid-template-columns: repeat(3, minmax(0, 1fr));
                 gap: 8px;
                 align-items: center;
-                flex-wrap: wrap;
                 margin-top: 10px;
             }
 
             #pj-notes-panel .pj-backup-status {
                 font-size: 12px;
                 color: #475569;
-                flex: 1 1 100%;
+                grid-column: 1 / -1;
             }
 
             #pj-notes-panel .pj-btn {
@@ -1664,12 +1682,7 @@
         summarySub.className = 'pj-summary-sub';
         summarySub.textContent = notes.length ? 'Selecione uma nota para conferir o conteúdo.' : 'Nenhuma nota local encontrada.';
 
-        const backupOpenBtn = rootDoc.createElement('button');
-        backupOpenBtn.className = 'pj-btn';
-        backupOpenBtn.type = 'button';
-        backupOpenBtn.textContent = 'Abrir backup remoto';
-
-        summaryCard.append(summaryKicker, summaryTitle, summarySub, backupOpenBtn);
+        summaryCard.append(summaryKicker, summaryTitle, summarySub);
 
         const filterCard = rootDoc.createElement('div');
         filterCard.className = 'pj-card';
@@ -1695,14 +1708,6 @@
         const listContainer = rootDoc.createElement('div');
         listContainer.className = 'pj-note-list';
 
-        const previewTitle = rootDoc.createElement('div');
-        previewTitle.className = 'pj-preview-title';
-        previewTitle.textContent = 'Pré-visualização da nota selecionada';
-
-        const previewBox = rootDoc.createElement('div');
-        previewBox.className = 'pj-preview-box';
-        previewBox.textContent = notes.length ? 'Selecione uma nota na lista ao lado.' : 'Nenhuma nota encontrada.';
-
         let selectedKey = null;
 
         function refreshSelectionStyles() {
@@ -1716,11 +1721,7 @@
         }
 
         function refreshEmptyStateAfterDelete() {
-            if (!listContainer.children.length) {
-                previewBox.textContent = 'Nenhuma nota encontrada.';
-            } else if (!selectedKey) {
-                previewBox.textContent = 'Selecione uma nota na lista ao lado.';
-            }
+            if (!listContainer.children.length || !selectedKey) return;
         }
 
         function renderNoteItems(query = '') {
@@ -1762,10 +1763,13 @@
             deleteBtn.type = 'button';
             deleteBtn.textContent = 'Excluir';
 
+            const inlinePreview = rootDoc.createElement('div');
+            inlinePreview.className = 'pj-note-inline-preview';
+            inlinePreview.innerHTML = n.html || '(Nota vazia)';
+
             item.addEventListener('click', () => {
                 selectedKey = n.key;
                 refreshSelectionStyles();
-                previewBox.innerHTML = n.html || '(Nota vazia)';
             });
 
             deleteBtn.addEventListener('click', e => {
@@ -1783,7 +1787,6 @@
 
                 if (selectedKey === n.key) {
                     selectedKey = null;
-                    previewBox.textContent = 'Nota excluída. Selecione outra nota.';
                 }
 
                 refreshEmptyStateAfterDelete();
@@ -1791,7 +1794,7 @@
                 scheduleAutoBackup();
             });
 
-            item.append(line1, line2, line3, deleteBtn);
+            item.append(line1, line2, line3, deleteBtn, inlinePreview);
             listContainer.appendChild(item);
             });
 
@@ -1800,9 +1803,6 @@
 
         listCard.append(leftHeader, listContainer);
         left.append(summaryCard, filterCard, listCard);
-
-        const previewCard = rootDoc.createElement('div');
-        previewCard.className = 'pj-card';
 
         const rightBody = rootDoc.createElement('div');
         rightBody.className = 'pj-panel-right-body';
@@ -1818,8 +1818,8 @@
         const info = rootDoc.createElement('div');
         info.className = 'pj-info';
         info.innerHTML = [
-            'Use <strong>Exportar notas</strong> para gerar um JSON com todas as notas.',
-            'Cole um JSON válido abaixo e clique em <strong>Importar notas</strong> para restaurar.'
+            'Use <strong>Baixar JSON</strong> para salvar um arquivo com todas as notas.',
+            'Use <strong>Enviar JSON</strong> para importar um arquivo exportado anteriormente.'
         ].join('<br>');
 
         const textarea = rootDoc.createElement('textarea');
@@ -1832,22 +1832,45 @@
         btnExport.className = 'pj-btn';
         btnExport.type = 'button';
         btnExport.dataset.variant = 'primary';
-        btnExport.innerHTML = '<i class="fa-solid fa-file-export" aria-hidden="true"></i><span>Exportar notas</span>';
+        btnExport.innerHTML = '<i class="fa-solid fa-download" aria-hidden="true"></i><span>Baixar JSON</span>';
 
         const btnImport = rootDoc.createElement('button');
         btnImport.className = 'pj-btn';
         btnImport.type = 'button';
         btnImport.dataset.variant = 'success';
-        btnImport.innerHTML = '<i class="fa-solid fa-file-import" aria-hidden="true"></i><span>Importar notas</span>';
+        btnImport.innerHTML = '<i class="fa-solid fa-upload" aria-hidden="true"></i><span>Enviar JSON</span>';
+
+        const fileInput = rootDoc.createElement('input');
+        fileInput.type = 'file';
+        fileInput.accept = 'application/json,.json';
+        fileInput.style.display = 'none';
 
         btnExport.addEventListener('click', () => {
-            textarea.value = JSON.stringify(buildBackupPayload().notes, null, 2);
+            const payload = buildBackupPayload().notes;
+            const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const link = rootDoc.createElement('a');
+            link.href = url;
+            link.download = `projudi-anotacoes-${new Date().toISOString().slice(0, 10)}.json`;
+            rootDoc.body.appendChild(link);
+            link.click();
+            link.remove();
+            rootWin.setTimeout(() => URL.revokeObjectURL(url), 1000);
         });
 
         btnImport.addEventListener('click', () => {
-            const raw = textarea.value.trim();
+            fileInput.value = '';
+            fileInput.click();
+        });
+
+        fileInput.addEventListener('change', () => {
+            const file = fileInput.files && fileInput.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = () => {
+                const raw = String(reader.result || '').trim();
             if (!raw) {
-                rootWin.alert('Cole um JSON para importar.');
+                rootWin.alert('O arquivo JSON está vazio.');
                 return;
             }
 
@@ -1869,6 +1892,9 @@
             updateNoteIndicator(true);
             scheduleAutoBackup();
             rootWin.alert(`Importação concluída. ${count} nota(s) importada(s). Reabra o painel para ver a lista atualizada.`);
+            };
+            reader.onerror = () => rootWin.alert('Não foi possível ler o arquivo JSON.');
+            reader.readAsText(file);
         });
 
         const btnBackup = rootDoc.createElement('button');
@@ -1876,10 +1902,8 @@
         btnBackup.type = 'button';
         btnBackup.innerHTML = '<i class="fa-solid fa-cloud" aria-hidden="true"></i><span>Backup remoto</span>';
 
-        buttonsRow.append(btnExport, btnImport, btnBackup);
-
-        previewCard.append(previewTitle, previewBox);
-        toolsCard.append(toolsTitle, info, textarea, buttonsRow);
+        buttonsRow.append(btnExport, btnImport);
+        toolsCard.append(toolsTitle, info, textarea, fileInput, buttonsRow, btnBackup);
 
         const backupBox = rootDoc.createElement('div');
         backupBox.className = 'pj-card pj-backup-dialog';
@@ -1904,7 +1928,6 @@
                 <button id="pj-notes-backup-send" class="pj-btn" type="button" data-variant="primary"><i class="fa-solid fa-cloud-arrow-up" aria-hidden="true"></i><span>Enviar backup</span></button>
                 <button id="pj-notes-backup-restore" class="pj-btn" type="button" data-variant="success"><i class="fa-solid fa-cloud-arrow-down" aria-hidden="true"></i><span>Restaurar backup</span></button>
                 <button id="pj-notes-backup-clear" class="pj-btn" type="button" data-variant="secondary"><i class="fa-solid fa-eraser" aria-hidden="true"></i><span>Limpar backup</span></button>
-                <button class="pj-btn" type="button" data-pj-backup-close><span>Fechar</span></button>
                 <span id="pj-notes-backup-status" class="pj-backup-status"></span>
             </div>
             <div id="pj-notes-backup-last" class="pj-backup-status">${formatLastBackupLabel(backupSettings.lastBackupAt)}</div>
@@ -1914,7 +1937,7 @@
         backupPopover.className = 'pj-backup-popover';
         backupPopover.appendChild(backupBox);
 
-        rightBody.append(previewCard, toolsCard);
+        rightBody.append(toolsCard);
         right.append(rightBody);
         body.append(left, right);
         panel.append(header, body);
@@ -2047,7 +2070,6 @@
 
         renderNoteItems();
         searchInput.addEventListener('input', () => renderNoteItems(searchInput.value));
-        backupOpenBtn.addEventListener('click', () => setBackupOpen(true));
         btnBackup.addEventListener('click', () => setBackupOpen(true));
         backupPopover.addEventListener('click', e => {
             if (e.target === backupPopover) setBackupOpen(false);
