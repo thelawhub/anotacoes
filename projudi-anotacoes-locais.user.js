@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anotações
 // @namespace    projudi-anotacoes-locais.user.js
-// @version      3.9
+// @version      4.0
 // @icon         https://img.icons8.com/ios-filled/100/scales--v1.png
 // @description  Adiciona Post-it local ao Projudi, com painel de notas, importação e exportação.
 // @author       lourencosv (GPT)
@@ -878,7 +878,7 @@
 
             #pj-notes-panel .pj-panel-body {
                 display: grid;
-                grid-template-columns: minmax(300px, 420px) minmax(0, 1fr);
+                grid-template-columns: 330px minmax(0, 1fr);
                 grid-template-areas: "rail workspace";
                 flex: 1 1 auto;
                 min-height: 0;
@@ -955,6 +955,10 @@
                 display: grid;
                 gap: 8px;
                 max-height: none;
+            }
+
+            #pj-notes-panel .pj-panel-right .pj-card {
+                min-height: 100%;
             }
 
             #pj-notes-panel .pj-note-item {
@@ -1802,7 +1806,7 @@
         }
 
         listCard.append(leftHeader, listContainer);
-        left.append(summaryCard, filterCard, listCard);
+        left.append(summaryCard, filterCard);
 
         const rightBody = rootDoc.createElement('div');
         rightBody.className = 'pj-panel-right-body';
@@ -1937,7 +1941,8 @@
         backupPopover.className = 'pj-backup-popover';
         backupPopover.appendChild(backupBox);
 
-        rightBody.append(toolsCard);
+        rightBody.append(listCard);
+        left.append(toolsCard);
         right.append(rightBody);
         body.append(left, right);
         panel.append(header, body);
