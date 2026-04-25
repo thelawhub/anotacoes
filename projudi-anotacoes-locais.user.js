@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anotações
 // @namespace    projudi-anotacoes-locais.user.js
-// @version      3.7
+// @version      3.8
 // @icon         https://img.icons8.com/ios-filled/100/scales--v1.png
 // @description  Adiciona Post-it local ao Projudi, com painel de notas, importação e exportação.
 // @author       lourencosv (GPT)
@@ -822,8 +822,9 @@
             }
 
             #pj-notes-panel .pj-panel {
-                width: min(980px, calc(100vw - 24px));
-                max-height: min(88vh, 860px);
+                position: relative;
+                width: min(1180px, calc(100vw - 28px));
+                height: min(88vh, 900px);
                 background: #ffffff;
                 color: var(--pj-color-text);
                 border-radius: var(--pj-radius-lg);
@@ -876,59 +877,88 @@
             }
 
             #pj-notes-panel .pj-panel-body {
-                display: flex;
-                flex: 1;
-                min-height: 320px;
-                gap: 14px;
-                padding: 14px;
-                background: linear-gradient(180deg, #f8fbff 0%, #f2f6fc 100%);
+                display: grid;
+                grid-template-columns: 330px minmax(0, 1fr);
+                grid-template-areas: "rail workspace";
+                flex: 1 1 auto;
+                min-height: 0;
+                gap: 12px;
+                padding: 12px;
+                overflow: auto;
+                background: #f4f7fb;
             }
 
             #pj-notes-panel .pj-panel-left,
             #pj-notes-panel .pj-panel-right {
-                display: flex;
-                flex-direction: column;
+                display: grid;
+                align-content: start;
+                gap: 12px;
                 min-height: 0;
-                border: 1px solid #dbe3ef;
-                border-radius: 12px;
-                background: #ffffff;
-                box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
-                overflow: hidden;
             }
 
             #pj-notes-panel .pj-panel-left {
-                flex: 3;
+                grid-area: rail;
             }
 
             #pj-notes-panel .pj-panel-right {
-                flex: 2;
+                grid-area: workspace;
+                min-width: 0;
             }
 
             #pj-notes-panel .pj-section-title {
-                padding: 12px 14px;
-                border-bottom: 1px solid #dbe3ef;
-                font-weight: 700;
-                background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
-                font-size: 12px;
+                font-size: 11px;
                 color: #334155;
-                letter-spacing: .03em;
+                font-weight: 800;
+                letter-spacing: .04em;
                 text-transform: uppercase;
                 line-height: 1.35;
             }
 
-            #pj-notes-panel .pj-note-list {
-                flex: 1;
-                overflow-y: auto;
-                padding: 10px;
-                display: flex;
-                flex-direction: column;
+            #pj-notes-panel .pj-card {
+                display: grid;
                 gap: 10px;
-                min-height: 0;
+                border: 1px solid #dbe3ef;
+                border-radius: 8px;
+                background: #ffffff;
+                padding: 12px;
+                box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
+            }
+
+            #pj-notes-panel .pj-summary-title {
+                color: #12385f;
+                font-size: 22px;
+                font-weight: 800;
+                line-height: 1.1;
+            }
+
+            #pj-notes-panel .pj-summary-sub {
+                color: #64748b;
+                font-size: 12px;
+                font-weight: 600;
+            }
+
+            #pj-notes-panel .pj-filter-input,
+            #pj-notes-panel .pj-backup-grid input {
+                width: 100%;
+                min-width: 0;
+                min-height: 38px;
+                border: 1px solid var(--pj-color-border-control);
+                border-radius: 6px;
+                padding: 8px 9px;
+                background: #fff;
+                color: var(--pj-color-text);
+                font: inherit;
+                font-size: 13px;
+            }
+
+            #pj-notes-panel .pj-note-list {
+                display: grid;
+                gap: 8px;
             }
 
             #pj-notes-panel .pj-note-item {
                 border: 1px solid #dbe3ef;
-                border-radius: 12px;
+                border-radius: 8px;
                 background: #ffffff;
                 padding: 12px;
                 cursor: pointer;
@@ -967,32 +997,30 @@
 
             #pj-notes-panel .pj-note-delete {
                 position: absolute;
-                top: 6px;
+                top: 8px;
                 right: 8px;
-                border: 1px solid #fecaca;
-                border-radius: 7px;
-                padding: 2px 7px;
-                font-size: 12px;
+                border: 1px solid #cbd5e1;
+                border-radius: 6px;
+                padding: 4px 8px;
+                font-size: 11px;
                 cursor: pointer;
-                background: #fee2e2;
-                color: #b91c1c;
+                background: #fff;
+                color: #334155;
                 font-weight: 600;
             }
 
             #pj-notes-panel .pj-preview-title {
-                padding: 8px 10px 0;
                 font-size: 12px;
                 color: var(--pj-color-text-muted);
             }
 
             #pj-notes-panel .pj-preview-box {
-                margin: 4px 8px 8px;
-                border-radius: 12px;
+                border-radius: 8px;
                 background: #ffffff;
                 border: 1px solid #dbe3ef;
                 padding: 12px;
-                min-height: 90px;
-                max-height: 170px;
+                min-height: 180px;
+                max-height: 360px;
                 overflow-y: auto;
                 font-size: 14px;
                 line-height: 1.35;
@@ -1001,13 +1029,10 @@
             }
 
             #pj-notes-panel .pj-panel-right-body {
-                padding: 14px;
-                display: flex;
-                flex-direction: column;
-                gap: 14px;
-                flex: 1;
+                display: grid;
+                gap: 12px;
+                align-content: start;
                 min-height: 0;
-                overflow-y: auto;
             }
 
             #pj-notes-panel .pj-info {
@@ -1015,20 +1040,19 @@
                 color: #475569;
                 line-height: 1.35;
                 border: 1px solid #dbe3ef;
-                border-radius: 12px;
+                border-radius: 8px;
                 background: #ffffff;
                 padding: 12px;
                 box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
             }
 
             #pj-notes-panel #pj-notes-io {
-                flex: 0 0 160px;
-                min-height: 120px;
-                max-height: 220px;
+                min-height: 180px;
+                max-height: 320px;
                 width: 100%;
                 resize: vertical;
                 border: 1px solid var(--pj-color-border-control);
-                border-radius: var(--pj-radius-sm);
+                border-radius: 8px;
                 padding: 6px 8px;
                 font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
                 font-size: 12px;
@@ -1038,9 +1062,9 @@
             }
 
             #pj-notes-panel .pj-row-btns {
-                display: flex;
+                display: grid;
+                grid-template-columns: repeat(3, minmax(0, 1fr));
                 gap: 8px;
-                flex-wrap: wrap;
             }
 
             #pj-notes-panel .pj-backup-grid {
@@ -1048,11 +1072,6 @@
                 grid-template-columns: repeat(2, minmax(0, 1fr));
                 gap: 8px;
                 margin-top: 10px;
-            }
-
-            #pj-notes-panel .pj-backup-grid input {
-                width: 100%;
-                min-width: 0;
             }
 
             #pj-notes-panel .pj-backup-grid .pj-backup-span {
@@ -1092,11 +1111,10 @@
             }
 
             #pj-notes-panel .pj-btn {
-                flex: 1 1 auto;
-                min-width: 86px;
-                min-height: 34px;
-                padding: 7px 11px;
-                border-radius: 8px;
+                min-width: 0;
+                min-height: 38px;
+                padding: 8px 11px;
+                border-radius: 6px;
                 border: 1px solid var(--pj-color-border-control);
                 background: #ffffff;
                 color: #1e293b;
@@ -1122,27 +1140,56 @@
                 border-color: #15803d;
             }
 
+            #pj-notes-panel .pj-backup-popover {
+                position: absolute;
+                inset: 0;
+                z-index: 2;
+                display: none;
+                align-items: center;
+                justify-content: center;
+                padding: 18px;
+                background: rgba(15, 35, 60, .28);
+            }
+
+            #pj-notes-panel .pj-backup-popover[data-open='true'] {
+                display: flex;
+            }
+
+            #pj-notes-panel .pj-backup-dialog {
+                width: min(520px, 100%);
+                max-height: min(74vh, 640px);
+                overflow: auto;
+            }
+
+            #pj-notes-panel .pj-backup-head {
+                display: flex;
+                align-items: flex-start;
+                justify-content: space-between;
+                gap: 12px;
+            }
+
+            #pj-notes-panel .pj-backup-close {
+                border: 1px solid #cbd5e1;
+                width: 30px;
+                height: 30px;
+                border-radius: 999px;
+                background: #eef4fb;
+                color: #173a61;
+                cursor: pointer;
+            }
+
             @media (max-width: 860px) {
                 #pj-notes-panel .pj-panel-body {
-                    flex-direction: column;
+                    grid-template-columns: 1fr;
+                    grid-template-areas:
+                        "rail"
+                        "workspace";
                     padding: 12px;
                     gap: 12px;
                 }
 
-                #pj-notes-panel .pj-panel-left {
-                    min-height: 230px;
-                }
-
-                #pj-notes-panel .pj-panel-right {
-                    min-height: 220px;
-                }
-
-                #pj-notes-panel .pj-panel-right-body {
-                    padding: 12px;
-                    gap: 10px;
-                }
-
-                #pj-notes-panel .pj-backup-grid {
+                #pj-notes-panel .pj-backup-grid,
+                #pj-notes-panel .pj-row-btns {
                     grid-template-columns: 1fr;
                 }
 
@@ -1602,6 +1649,45 @@
         const right = rootDoc.createElement('div');
         right.className = 'pj-panel-right';
 
+        const summaryCard = rootDoc.createElement('div');
+        summaryCard.className = 'pj-card';
+
+        const summaryKicker = rootDoc.createElement('div');
+        summaryKicker.className = 'pj-section-title';
+        summaryKicker.textContent = 'Painel principal';
+
+        const summaryTitle = rootDoc.createElement('div');
+        summaryTitle.className = 'pj-summary-title';
+        summaryTitle.textContent = `${notes.length} nota${notes.length === 1 ? '' : 's'} no painel`;
+
+        const summarySub = rootDoc.createElement('div');
+        summarySub.className = 'pj-summary-sub';
+        summarySub.textContent = notes.length ? 'Selecione uma nota para conferir o conteúdo.' : 'Nenhuma nota local encontrada.';
+
+        const backupOpenBtn = rootDoc.createElement('button');
+        backupOpenBtn.className = 'pj-btn';
+        backupOpenBtn.type = 'button';
+        backupOpenBtn.textContent = 'Abrir backup remoto';
+
+        summaryCard.append(summaryKicker, summaryTitle, summarySub, backupOpenBtn);
+
+        const filterCard = rootDoc.createElement('div');
+        filterCard.className = 'pj-card';
+
+        const filterTitle = rootDoc.createElement('div');
+        filterTitle.className = 'pj-section-title';
+        filterTitle.textContent = 'Filtros';
+
+        const searchInput = rootDoc.createElement('input');
+        searchInput.className = 'pj-filter-input';
+        searchInput.type = 'search';
+        searchInput.placeholder = 'Buscar por CNJ, chave ou conteúdo';
+
+        filterCard.append(filterTitle, searchInput);
+
+        const listCard = rootDoc.createElement('div');
+        listCard.className = 'pj-card';
+
         const leftHeader = rootDoc.createElement('div');
         leftHeader.className = 'pj-section-title';
         leftHeader.textContent = 'Notas salvas';
@@ -1637,7 +1723,23 @@
             }
         }
 
-        notes.forEach(n => {
+        function renderNoteItems(query = '') {
+            const normalizedQuery = String(query || '').trim().toLowerCase();
+            listContainer.textContent = '';
+
+            const visibleNotes = normalizedQuery
+                ? notes.filter(n => [n.cnj, n.subkey, n.preview].join(' ').toLowerCase().includes(normalizedQuery))
+                : notes;
+
+            if (!visibleNotes.length) {
+                const empty = rootDoc.createElement('div');
+                empty.className = 'pj-info';
+                empty.textContent = notes.length ? 'Nenhuma nota encontrada para este filtro.' : 'Nenhuma nota encontrada.';
+                listContainer.appendChild(empty);
+                return;
+            }
+
+            visibleNotes.forEach(n => {
             const item = rootDoc.createElement('div');
             item.className = 'pj-note-item';
             item.dataset.noteKey = n.key;
@@ -1673,7 +1775,11 @@
                 GM_deleteValue(n.key);
                 deleteNoteColorMeta(n.key);
                 invalidateNotesCaches();
+                const removedIndex = notes.findIndex(note => note.key === n.key);
+                if (removedIndex >= 0) notes.splice(removedIndex, 1);
                 item.remove();
+                summaryTitle.textContent = `${notes.length} nota${notes.length === 1 ? '' : 's'} no painel`;
+                summarySub.textContent = notes.length ? 'Selecione uma nota para conferir o conteúdo.' : 'Nenhuma nota local encontrada.';
 
                 if (selectedKey === n.key) {
                     selectedKey = null;
@@ -1687,17 +1793,27 @@
 
             item.append(line1, line2, line3, deleteBtn);
             listContainer.appendChild(item);
-        });
+            });
 
-        left.append(leftHeader, listContainer, previewTitle, previewBox);
+            refreshSelectionStyles();
+        }
 
-        const rightHeader = rootDoc.createElement('div');
-        rightHeader.className = 'pj-section-title';
-        rightHeader.textContent = 'Importar / Exportar';
+        listCard.append(leftHeader, listContainer);
+        left.append(summaryCard, filterCard, listCard);
+
+        const previewCard = rootDoc.createElement('div');
+        previewCard.className = 'pj-card';
 
         const rightBody = rootDoc.createElement('div');
         rightBody.className = 'pj-panel-right-body';
         let backupSettings = loadBackupSettings();
+
+        const toolsCard = rootDoc.createElement('div');
+        toolsCard.className = 'pj-card';
+
+        const toolsTitle = rootDoc.createElement('div');
+        toolsTitle.className = 'pj-section-title';
+        toolsTitle.textContent = 'Importar / Exportar';
 
         const info = rootDoc.createElement('div');
         info.className = 'pj-info';
@@ -1755,13 +1871,26 @@
             rootWin.alert(`Importação concluída. ${count} nota(s) importada(s). Reabra o painel para ver a lista atualizada.`);
         });
 
-        buttonsRow.append(btnExport, btnImport);
+        const btnBackup = rootDoc.createElement('button');
+        btnBackup.className = 'pj-btn';
+        btnBackup.type = 'button';
+        btnBackup.innerHTML = '<i class="fa-solid fa-cloud" aria-hidden="true"></i><span>Backup remoto</span>';
+
+        buttonsRow.append(btnExport, btnImport, btnBackup);
+
+        previewCard.append(previewTitle, previewBox);
+        toolsCard.append(toolsTitle, info, textarea, buttonsRow);
+
         const backupBox = rootDoc.createElement('div');
-        backupBox.className = 'pj-info';
-        backupBox.style.marginTop = '12px';
+        backupBox.className = 'pj-card pj-backup-dialog';
         backupBox.innerHTML = `
-            <strong>Backup remoto</strong><br>
-            Um único Gist no GitHub pode armazenar este script em arquivo separado.
+            <div class="pj-backup-head">
+                <div>
+                    <div class="pj-section-title">Backup remoto</div>
+                    <div class="pj-summary-sub">Um único Gist no GitHub pode armazenar este script em arquivo separado.</div>
+                </div>
+                <button class="pj-backup-close" type="button" data-pj-backup-close title="Fechar">×</button>
+            </div>
             <div class="pj-backup-grid">
                 <input id="pj-notes-backup-gist" type="text" placeholder="Gist ID" value="${backupSettings.gistId}">
                 <input id="pj-notes-backup-file" type="text" placeholder="projudi-anotacoes-locais.json" value="${backupSettings.fileName}">
@@ -1775,16 +1904,21 @@
                 <button id="pj-notes-backup-send" class="pj-btn" type="button" data-variant="primary"><i class="fa-solid fa-cloud-arrow-up" aria-hidden="true"></i><span>Enviar backup</span></button>
                 <button id="pj-notes-backup-restore" class="pj-btn" type="button" data-variant="success"><i class="fa-solid fa-cloud-arrow-down" aria-hidden="true"></i><span>Restaurar backup</span></button>
                 <button id="pj-notes-backup-clear" class="pj-btn" type="button" data-variant="secondary"><i class="fa-solid fa-eraser" aria-hidden="true"></i><span>Limpar backup</span></button>
+                <button class="pj-btn" type="button" data-pj-backup-close><span>Fechar</span></button>
                 <span id="pj-notes-backup-status" class="pj-backup-status"></span>
             </div>
             <div id="pj-notes-backup-last" class="pj-backup-status">${formatLastBackupLabel(backupSettings.lastBackupAt)}</div>
         `;
 
-        rightBody.append(info, textarea, buttonsRow, backupBox);
-        right.append(rightHeader, rightBody);
+        const backupPopover = rootDoc.createElement('div');
+        backupPopover.className = 'pj-backup-popover';
+        backupPopover.appendChild(backupBox);
 
+        rightBody.append(previewCard, toolsCard);
+        right.append(rightBody);
         body.append(left, right);
         panel.append(header, body);
+        panel.appendChild(backupPopover);
         overlay.appendChild(panel);
         rootDoc.body.appendChild(overlay);
 
@@ -1801,6 +1935,10 @@
 
         function onEsc(ev) {
             if (ev.key === 'Escape') closePanel();
+        }
+
+        function setBackupOpen(open) {
+            backupPopover.dataset.open = open ? 'true' : 'false';
         }
 
         const backupEnabledInput = rootDoc.getElementById('pj-notes-backup-enabled');
@@ -1907,6 +2045,16 @@
         }
         updateBackupLast(backupSettings);
 
+        renderNoteItems();
+        searchInput.addEventListener('input', () => renderNoteItems(searchInput.value));
+        backupOpenBtn.addEventListener('click', () => setBackupOpen(true));
+        btnBackup.addEventListener('click', () => setBackupOpen(true));
+        backupPopover.addEventListener('click', e => {
+            if (e.target === backupPopover) setBackupOpen(false);
+        });
+        backupPopover.querySelectorAll('[data-pj-backup-close]').forEach(btn => {
+            btn.addEventListener('click', () => setBackupOpen(false));
+        });
         closeBtn.addEventListener('click', closePanel);
 
         overlay.addEventListener('click', e => {
