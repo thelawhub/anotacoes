@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anotações
 // @namespace    projudi-anotacoes-locais.user.js
-// @version      4.2
+// @version      4.3
 // @icon         https://img.icons8.com/ios-filled/100/scales--v1.png
 // @description  Adiciona Post-it local ao Projudi, com painel de notas, importação e exportação.
 // @author       lourencosv (GPT)
@@ -1088,19 +1088,31 @@
             #pj-notes-panel .pj-backup-grid {
                 display: grid;
                 grid-template-columns: repeat(2, minmax(0, 1fr));
-                gap: 8px;
-                margin-top: 10px;
+                gap: 10px;
+                margin-top: 14px;
             }
 
             #pj-notes-panel .pj-backup-grid .pj-backup-span {
                 grid-column: 1 / -1;
             }
 
+            #pj-notes-panel .pj-backup-field {
+                display: grid;
+                gap: 5px;
+                min-width: 0;
+            }
+
+            #pj-notes-panel .pj-backup-field label {
+                color: #2d4668;
+                font-size: 12px;
+                font-weight: 700;
+            }
+
             #pj-notes-panel .pj-backup-toggles {
                 display: flex;
-                gap: 14px;
+                gap: 10px;
                 flex-wrap: wrap;
-                margin-top: 10px;
+                margin-top: 12px;
             }
 
             #pj-notes-panel .pj-backup-toggles label {
@@ -1116,10 +1128,15 @@
 
             #pj-notes-panel .pj-backup-actions {
                 display: grid;
-                grid-template-columns: repeat(3, minmax(0, 1fr));
+                grid-template-columns: repeat(4, minmax(0, 1fr));
                 gap: 8px;
                 align-items: center;
-                margin-top: 10px;
+                margin-top: 14px;
+            }
+
+            #pj-notes-panel .pj-backup-actions .pj-btn {
+                min-height: 40px;
+                border-radius: 8px;
             }
 
             #pj-notes-panel .pj-backup-status {
@@ -1148,14 +1165,20 @@
 
             #pj-notes-panel .pj-btn[data-variant='primary'] {
                 color: #ffffff;
-                background: #0f3e75;
-                border-color: #0f3e75;
+                background: #1f69d5;
+                border-color: #1f69d5;
             }
 
             #pj-notes-panel .pj-btn[data-variant='success'] {
                 color: #ffffff;
-                background: #15803d;
-                border-color: #15803d;
+                background: #18883f;
+                border-color: #18883f;
+            }
+
+            #pj-notes-panel .pj-backup-actions .pj-backup-danger {
+                border-color: #fecaca;
+                background: #fff7f7;
+                color: #b42318;
             }
 
             #pj-notes-panel .pj-backup-popover {
@@ -1176,7 +1199,9 @@
             #pj-notes-panel .pj-backup-dialog {
                 width: min(720px, calc(100vw - 36px));
                 max-height: min(84vh, 760px);
+                padding: 16px;
                 overflow: auto;
+                box-sizing: border-box;
                 border: 1px solid #dbe3ef;
                 border-radius: 12px;
                 background: #ffffff;
@@ -1211,7 +1236,8 @@
                 }
 
                 #pj-notes-panel .pj-backup-grid,
-                #pj-notes-panel .pj-row-btns {
+                #pj-notes-panel .pj-row-btns,
+                #pj-notes-panel .pj-backup-actions {
                     grid-template-columns: 1fr;
                 }
 
@@ -1914,26 +1940,36 @@
         backupBox.innerHTML = `
             <div class="pj-backup-head">
                 <div>
-                    <div class="pj-section-title">Backup remoto</div>
-                    <div class="pj-summary-sub">Um único Gist no GitHub pode armazenar este script em arquivo separado.</div>
+                    <div class="pj-section-title">BACKUP REMOTO</div>
+                    <div class="pj-summary-sub">Use um único Gist no GitHub e um arquivo separado para este script.</div>
                 </div>
                 <button class="pj-backup-close" type="button" data-pj-backup-close title="Fechar">×</button>
             </div>
             <div class="pj-backup-grid">
-                <input id="pj-notes-backup-gist" type="text" placeholder="Gist ID" value="${backupSettings.gistId}">
-                <input id="pj-notes-backup-file" type="text" placeholder="projudi-anotacoes-locais.json" value="${backupSettings.fileName}">
-                <input id="pj-notes-backup-token" class="pj-backup-span" type="password" placeholder="ghp_..." value="${backupSettings.token}">
+                <div class="pj-backup-field">
+                    <label for="pj-notes-backup-gist">Gist ID</label>
+                    <input id="pj-notes-backup-gist" type="text" placeholder="Cole o Gist ID" value="${backupSettings.gistId}">
+                </div>
+                <div class="pj-backup-field">
+                    <label for="pj-notes-backup-file">Arquivo</label>
+                    <input id="pj-notes-backup-file" type="text" placeholder="projudi-anotacoes-locais.json" value="${backupSettings.fileName}">
+                </div>
+                <div class="pj-backup-field pj-backup-span">
+                    <label for="pj-notes-backup-token">Token do GitHub</label>
+                    <input id="pj-notes-backup-token" type="password" placeholder="ghp_..." value="${backupSettings.token}">
+                </div>
             </div>
             <div class="pj-backup-toggles">
-                <label><input id="pj-notes-backup-enabled" type="checkbox" ${backupSettings.enabled ? 'checked' : ''}> Ativar backup por Gist no GitHub.</label>
+                <label><input id="pj-notes-backup-enabled" type="checkbox" ${backupSettings.enabled ? 'checked' : ''}> Ativar backup por Gist no GitHub</label>
                 <label><input id="pj-notes-backup-auto" type="checkbox" ${backupSettings.autoBackupOnSave ? 'checked' : ''}> Backup automático</label>
             </div>
             <div class="pj-backup-actions">
                 <button id="pj-notes-backup-send" class="pj-btn" type="button" data-variant="primary"><i class="fa-solid fa-cloud-arrow-up" aria-hidden="true"></i><span>Enviar backup</span></button>
                 <button id="pj-notes-backup-restore" class="pj-btn" type="button" data-variant="success"><i class="fa-solid fa-cloud-arrow-down" aria-hidden="true"></i><span>Restaurar backup</span></button>
-                <button id="pj-notes-backup-clear" class="pj-btn" type="button" data-variant="secondary"><i class="fa-solid fa-eraser" aria-hidden="true"></i><span>Limpar backup</span></button>
-                <span id="pj-notes-backup-status" class="pj-backup-status"></span>
+                <button id="pj-notes-backup-clear" class="pj-btn pj-backup-danger" type="button" data-variant="secondary"><i class="fa-solid fa-eraser" aria-hidden="true"></i><span>Limpar backup</span></button>
+                <button class="pj-btn" type="button" data-variant="secondary" data-pj-backup-close>Fechar</button>
             </div>
+            <div id="pj-notes-backup-status" class="pj-backup-status"></div>
             <div id="pj-notes-backup-last" class="pj-backup-status">${formatLastBackupLabel(backupSettings.lastBackupAt)}</div>
         `;
 
