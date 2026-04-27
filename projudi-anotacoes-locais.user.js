@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Anotações
 // @namespace    projudi-anotacoes-locais.user.js
-// @version      4.1
+// @version      4.2
 // @icon         https://img.icons8.com/ios-filled/100/scales--v1.png
 // @description  Adiciona Post-it local ao Projudi, com painel de notas, importação e exportação.
 // @author       lourencosv (GPT)
@@ -1159,14 +1159,14 @@
             }
 
             #pj-notes-panel .pj-backup-popover {
-                position: absolute;
+                position: fixed;
                 inset: 0;
-                z-index: 2;
+                z-index: 2147483647;
                 display: none;
                 align-items: center;
                 justify-content: center;
                 padding: 18px;
-                background: rgba(15, 35, 60, .28);
+                background: rgba(15, 23, 42, .34);
             }
 
             #pj-notes-panel .pj-backup-popover[data-open='true'] {
@@ -1174,9 +1174,13 @@
             }
 
             #pj-notes-panel .pj-backup-dialog {
-                width: min(520px, 100%);
-                max-height: min(74vh, 640px);
+                width: min(720px, calc(100vw - 36px));
+                max-height: min(84vh, 760px);
                 overflow: auto;
+                border: 1px solid #dbe3ef;
+                border-radius: 12px;
+                background: #ffffff;
+                box-shadow: 0 24px 70px rgba(2, 6, 23, .30);
             }
 
             #pj-notes-panel .pj-backup-head {
